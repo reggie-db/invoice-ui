@@ -1,32 +1,35 @@
 
-# Invoice Search UI (Dash)
+# Invoice Search UI
 
-This repository now hosts a Dash application that recreates the original React design for exploring computer hardware invoices. The layout, typography, and card structure closely follow the reference UI while using a Python stack.
+Invoice Search UI is a Dash web application for browsing hardware invoices by invoice number, PO, customer, or item details. It reproduces a polished card-based design, supports infinite scroll, and can source its data from either bundled demo invoices or a live backend service.
 
-## Prerequisites
+## Features
 
-1. Install [uv](https://docs.astral.sh/uv/) for fast Python environment management.
-2. Ensure Python 3.11 or newer is available on your system.
+- Rich invoice cards with seller/buyer/ship-to summaries, line-item breakdowns, and serial number badges.
+- Debounced search that filters across invoice metadata, company names, part numbers, and serial numbers.
+- Infinite scrolling results list with lazy loading for large datasets.
+- Swappable data services so the UI can point to mock data or a production-grade provider.
 
-## Setup and Development
+## Requirements
 
-1. Install dependencies into a local virtual environment:
-   ```
-   uv sync
-   ```
-2. Start the Dash development server:
-   ```
-   uv run invoice_ui
-   ```
-   The app listens on http://127.0.0.1:8050 by default.
-3. Use the same command in production contexts or wrap it with a process manager of your choice.
+- Python 3.11+
+- [uv](https://docs.astral.sh/uv/) for environment management
 
-## Service Abstraction
+## Getting Started
 
-All data access flows through `invoice_ui.services.InvoiceService`. The default `DemoInvoiceService` exposes the static data that shipped with the React app, but you can swap in another backend:
+```bash
+uv sync          # install dependencies into .venv
+uv run invoice_ui
+```
 
-1. Implement a class that inherits `InvoiceService` and register it in `invoice_ui/services/__init__.py`.
-2. Set the `INVOICE_UI_SERVICE` environment variable to the registered key before launching the app.
+Visit http://127.0.0.1:8050/ to use the UI. The app reloads automatically when Python files or assets change.
 
-This separation keeps callbacks and Dash components focused on presentation while backend integrations remain isolated.
+## Data Services
+
+All data flows through `invoice_ui.services.InvoiceService`. Two implementations are included:
+
+- `demo`: ships with curated invoice fixtures.
+- `impl`: fetches JSON invoices from a Spark table via `reggie_tools`.
+
+Switch between services by setting `INVOICE_UI_SERVICE=demo` (default) or `INVOICE_UI_SERVICE=impl`. Any custom provider can plug in by subclassing `InvoiceService`, registering it in `invoice_ui/services/__init__.py`, and pointing the environment variable at the new key.
   
