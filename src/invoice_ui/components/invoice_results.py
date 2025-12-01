@@ -11,7 +11,11 @@ from invoice_ui.models.invoice import Invoice
 """Helpers that render the invoice result list."""
 
 
-def build_invoice_results(invoices: Sequence[Invoice], query: str | None) -> html.Div:
+def build_invoice_results(
+    invoices: Sequence[Invoice],
+    query: str | None,
+    has_more: bool = False,
+) -> html.Div:
     """Return either the empty state or the list of invoice cards."""
     if not invoices:
         return html.Div(
@@ -26,24 +30,30 @@ def build_invoice_results(invoices: Sequence[Invoice], query: str | None) -> htm
             ],
         )
 
-    return html.Div(
-        className="results",
-        children=[
-            html.Div(
-                className="results-summary",
-                children=[
-                    html.Span(
-                        _summary_text(len(invoices), query),
-                        className="muted",
-                    ),
-                ],
-            ),
-            html.Div(
-                className="stack",
-                children=[build_invoice_card(invoice) for invoice in invoices],
-            ),
-        ],
+    results_children = [
+        html.Div(
+            className="results-summary",
+            children=[
+                html.Span(
+                    _summary_text(len(invoices), query),
+                    className="muted",
+                ),
+            ],
+        ),
+        html.Div(
+            className="stack",
+            children=[build_invoice_card(invoice) for invoice in invoices],
+        ),
+    ]
+
+    results_children.append(
+        html.Div(
+            className="load-more-hint" + ("" if has_more else " end"),
+            children="Scroll to load more invoices" if has_more else "All invoices loaded",
+        )
     )
+
+    return html.Div(className="results", children=results_children)
 
 
 def _summary_text(count: int, query: str | None) -> str:

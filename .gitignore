@@ -1,0 +1,43 @@
+# Python artifacts
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.egg-info/
+*.eggs/
+*.log
+
+# Virtual environments
+.venv/
+venv/
+env/
+.Python
+
+# uv lock and build caches
+/.uv/
+/uv.lock
+
+# Build / distribution outputs
+build/
+dist/
+*.wheel
+
+# IDEs and editors
+.idea/
+.vscode/
+.fleet/
+.cursor/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Test / coverage
+.pytest_cache/
+.coverage*
+htmlcov/
+coverage.xml
+
+# Notebook checkpoints
+.ipynb_checkpoints/
+

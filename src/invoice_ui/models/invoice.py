@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, replace
 from datetime import datetime
-from typing import List, Sequence
+from typing import Any, List, Mapping, Sequence
 
 """Dataclasses and helpers that describe invoice data made available to the UI."""
 
@@ -48,7 +48,7 @@ class InvoiceDetails:
 
     def formatted_invoice_date(self) -> str:
         """Return the invoice date formatted for display."""
-        return _format_date(self.invoice_date)
+        return _format_date(self.invoice_date) if self.invoice_date else "N/A"
 
     def formatted_due_date(self) -> str:
         """Return the due date formatted for display or the N/A label."""
@@ -115,8 +115,58 @@ class Invoice:
         return [value.lower() for value in terms if value]
 
 
+@dataclass(slots=True)
+class InvoicePage:
+    """Represents a single page of invoices."""
+
+    items: Sequence[Invoice]
+    total: int
+    page: int
+    page_size: int
+
+    @property
+    def has_more(self) -> bool:
+        """Return True when additional pages are available."""
+        return self.page * self.page_size < self.total
+
+
 def _format_date(date_str: str) -> str:
     """Format a date string stored in ISO format into a readable presentation."""
     parsed = datetime.fromisoformat(date_str)
     return parsed.strftime("%b %d, %Y")
 
+
+def serialize_invoice(invoice: Invoice) -> dict:
+    """Convert an Invoice dataclass into a JSON serializable dictionary."""
+    return asdict(invoice)
+
+
+def deserialize_invoice(payload: Mapping[str, Any]) -> Invoice:
+    """Convert a dictionary structure back into an Invoice dataclass."""
+    line_items = [LineItem(**item) for item in payload["line_items"]]
+    ship_to = ShipTo(**payload["ship_to"])
+    buyer = Party(**payload["buyer"])
+    seller = Party(**payload["seller"])
+    totals = Totals(**payload["totals"])
+    invoice_details = InvoiceDetails(
+        amount_due=Money(**payload["invoice"]["amount_due"]),
+        invoice_number=payload["invoice"]["invoice_number"],
+        invoice_date=payload["invoice"]["invoice_date"],
+        purchase_order_number=payload["invoice"]["purchase_order_number"],
+        due_date=payload["invoice"]["due_date"],
+        sales_order_number=payload["invoice"]["sales_order_number"],
+        terms=payload["invoice"]["terms"],
+    )
+    return Invoice(
+        line_items=line_items,
+        ship_to=ship_to,
+        invoice=invoice_details,
+        buyer=buyer,
+        seller=seller,
+        totals=totals,
+    )
+
+
+def clone_invoice(invoice: Invoice, **overrides: Any) -> Invoice:
+    """Return a shallow copy of an invoice with the provided overrides applied."""
+    return replace(invoice, **overrides)

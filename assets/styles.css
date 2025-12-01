@@ -62,7 +62,7 @@ body {
 }
 
 .search-card {
-  padding: 28px;
+  padding: 22px;
 }
 
 .input-with-icon {
@@ -72,20 +72,20 @@ body {
 .input-icon {
   position: absolute;
   top: 50%;
-  left: 22px;
+  left: 18px;
   transform: translateY(-50%);
-  width: 22px;
-  height: 22px;
+  width: 20px;
+  height: 20px;
   color: var(--muted);
 }
 
 .search-input {
   width: 100%;
-  height: 60px;
+  height: 52px;
   border-radius: 999px;
   border: 1px solid var(--border);
   background: #f8faff;
-  padding: 0 24px 0 64px;
+  padding: 0 18px 0 54px;
   font-size: 1rem;
   color: var(--text);
   box-shadow: inset 0 2px 5px rgba(15, 23, 42, 0.05);
@@ -123,7 +123,7 @@ body {
 .card-header {
   display: flex;
   gap: 20px;
-  padding: 28px 32px 0;
+  padding: 24px 28px 0;
 }
 
 .header-text {
@@ -190,7 +190,7 @@ body {
   color: #fff;
   font-weight: 500;
   border-radius: 14px;
-  padding: 12px 20px;
+  padding: 10px 18px;
   cursor: pointer;
   display: inline-flex;
   gap: 8px;
@@ -209,16 +209,16 @@ body {
 }
 
 .card-body {
-  padding: 22px 32px 32px;
+  padding: 20px 28px 28px;
   display: flex;
   flex-direction: column;
-  gap: 26px;
+  gap: 22px;
 }
 
 .info-grid {
   background: var(--panel-muted);
   border-radius: var(--radius-sm);
-  padding: 18px;
+  padding: 16px;
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
   gap: 18px;
@@ -311,10 +311,10 @@ body {
 .line-item-card {
   border: 1px solid var(--border);
   border-radius: 14px;
-  padding: 16px;
+  padding: 14px;
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: 12px;
 }
 
 .line-item-main {
@@ -362,7 +362,7 @@ body {
   width: 100%;
   max-width: 340px;
   background: #fafbff;
-  padding: 18px 22px;
+  padding: 16px 18px;
   border-radius: 16px;
   border: 1px solid rgba(15, 22, 38, 0.06);
 }
@@ -394,6 +394,18 @@ body {
 
 .muted {
   color: var(--muted);
+}
+
+.load-more-hint {
+  text-align: center;
+  color: var(--muted);
+  padding: 12px;
+  font-size: 0.9rem;
+}
+
+.load-more-hint.end {
+  color: var(--muted);
+  opacity: 0.8;
 }
 
 @media (max-width: 768px) {
