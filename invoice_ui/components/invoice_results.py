@@ -1,0 +1,63 @@
+from __future__ import annotations
+
+from typing import Sequence
+
+from dash import html
+from dash_iconify import DashIconify
+
+from invoice_ui.components.invoice_card import build_invoice_card
+from invoice_ui.models.invoice import Invoice
+
+"""Helpers that render the invoice result list."""
+
+
+def build_invoice_results(invoices: Sequence[Invoice], query: str | None) -> html.Div:
+    """Return either the empty state or the list of invoice cards."""
+    if not invoices:
+        return html.Div(
+            className="card empty-state",
+            children=[
+                DashIconify(icon="lucide:file-x", className="empty-icon"),
+                html.H3("No invoices found"),
+                html.P(
+                    _empty_state_message(query),
+                    className="muted",
+                ),
+            ],
+        )
+
+    return html.Div(
+        className="results",
+        children=[
+            html.Div(
+                className="results-summary",
+                children=[
+                    html.Span(
+                        _summary_text(len(invoices), query),
+                        className="muted",
+                    ),
+                ],
+            ),
+            html.Div(
+                className="stack",
+                children=[build_invoice_card(invoice) for invoice in invoices],
+            ),
+        ],
+    )
+
+
+def _summary_text(count: int, query: str | None) -> str:
+    """Return the summary that mirrors the React implementation."""
+    noun = "invoice" if count == 1 else "invoices"
+    base = f"{count} {noun} found"
+    if query and query.strip():
+        return f"{base} for \"{query.strip()}\""
+    return base
+
+
+def _empty_state_message(query: str | None) -> str:
+    """Return context sensitive guidance for the empty state."""
+    if query and query.strip():
+        return f"No results match \"{query.strip()}\". Try a different search term."
+    return "No invoices available."
+
