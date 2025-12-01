@@ -7,8 +7,8 @@ requires-python = ">=3.12"
 dependencies = [
     "dash>=2.17",
     "dash-iconify>=0.1.2",
-    "databricks-connect==17.2.*",
-   "reggie-tools @ git+https://github.com/reggie-db/reggie-bricks-py.git@main#subdirectory=reggie-tools"
+    "reggie-tools @ git+https://github.com/reggie-db/reggie-bricks-py.git@main#subdirectory=reggie-tools",
+    "python-benedict"
 ]
 
 [project.scripts]

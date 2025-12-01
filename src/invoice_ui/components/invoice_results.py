@@ -42,14 +42,19 @@ def build_invoice_results(
         ),
         html.Div(
             className="stack",
-            children=[build_invoice_card(invoice) for invoice in invoices],
+            children=[
+                build_invoice_card(invoice, f"invoice-{invoice.invoice.invoice_number}")
+                for invoice in invoices
+            ],
         ),
     ]
 
     results_children.append(
         html.Div(
             className="load-more-hint" + ("" if has_more else " end"),
-            children="Scroll to load more invoices" if has_more else "All invoices loaded",
+            children="Scroll to load more invoices"
+            if has_more
+            else "All invoices loaded",
         )
     )
 
@@ -61,13 +66,12 @@ def _summary_text(count: int, query: str | None) -> str:
     noun = "invoice" if count == 1 else "invoices"
     base = f"{count} {noun} found"
     if query and query.strip():
-        return f"{base} for \"{query.strip()}\""
+        return f'{base} for "{query.strip()}"'
     return base
 
 
 def _empty_state_message(query: str | None) -> str:
     """Return context sensitive guidance for the empty state."""
     if query and query.strip():
-        return f"No results match \"{query.strip()}\". Try a different search term."
+        return f'No results match "{query.strip()}". Try a different search term.'
     return "No invoices available."
-

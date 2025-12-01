@@ -10,18 +10,20 @@ from invoice_ui.models.invoice import Invoice, LineItem, Party, ShipTo
 """Reusable invoice card component."""
 
 
-def build_invoice_card(invoice: Invoice) -> html.Div:
+def build_invoice_card(invoice: Invoice, card_id: str | None = None) -> html.Div:
     """Return a card styled container for a specific invoice."""
+    invoice_id = card_id or f"invoice-{invoice.invoice.invoice_number}"
     return html.Div(
+        id=invoice_id,
         className="card invoice-card",
         children=[
-            _build_header(invoice),
+            _build_header(invoice, invoice_id),
             _build_body(invoice),
         ],
     )
 
 
-def _build_header(invoice: Invoice) -> html.Div:
+def _build_header(invoice: Invoice, invoice_id: str) -> html.Div:
     """Return the card header area."""
     return html.Div(
         className="card-header",
@@ -32,7 +34,9 @@ def _build_header(invoice: Invoice) -> html.Div:
                     html.Div(
                         className="title-row",
                         children=[
-                            DashIconify(icon="lucide:file-text", className="title-icon"),
+                            DashIconify(
+                                icon="lucide:file-text", className="title-icon"
+                            ),
                             html.H3(f"Invoice #{invoice.invoice.invoice_number}"),
                         ],
                     ),
@@ -47,12 +51,15 @@ def _build_header(invoice: Invoice) -> html.Div:
                                 icon="lucide:dollar-sign",
                                 label=f"{invoice.invoice.amount_due.currency} {invoice.invoice.amount_due.value:,.2f}",
                             ),
-                            html.Span(invoice.invoice.terms, className="badge secondary"),
+                            html.Span(
+                                invoice.invoice.terms, className="badge secondary"
+                            ),
                         ],
                     ),
                 ],
             ),
             html.Button(
+                id={"type": "download-button", "index": invoice_id},
                 className="button primary ghost gap",
                 children=[
                     DashIconify(icon="lucide:download", className="button-icon"),
@@ -98,7 +105,9 @@ def _build_parties(invoice: Invoice) -> html.Div:
         children=[
             _party_block("Seller", "lucide:building-2", invoice.seller),
             _party_block("Buyer", "lucide:building-2", invoice.buyer),
-            _party_block("Ship To", "lucide:map-pin", invoice.ship_to, include_attention=True),
+            _party_block(
+                "Ship To", "lucide:map-pin", invoice.ship_to, include_attention=True
+            ),
         ],
     )
 
@@ -187,7 +196,10 @@ def _serial_number_block(serial_numbers: Sequence[str]) -> html.Div | None:
             html.Span(f"Serial Numbers ({len(serial_numbers)})", className="label"),
             html.Div(
                 className="badge-list",
-                children=[html.Span(sn, className="badge outline mono") for sn in serial_numbers],
+                children=[
+                    html.Span(sn, className="badge outline mono")
+                    for sn in serial_numbers
+                ],
             ),
         ],
     )
@@ -208,7 +220,9 @@ def _build_totals(invoice: Invoice) -> html.Div:
     )
 
 
-def _totals_row(label: str, value: float, currency: str, emphasize: bool = False) -> html.Div:
+def _totals_row(
+    label: str, value: float, currency: str, emphasize: bool = False
+) -> html.Div:
     """Return a row within the totals section."""
     classes = "totals-row"
     if emphasize:
@@ -272,4 +286,3 @@ def _meta_item(icon: str, label: str) -> html.Span:
 def _format_currency(value: float, currency: str) -> str:
     """Format a currency amount using the invoice currency symbol."""
     return f"{currency} {value:,.2f}"
-

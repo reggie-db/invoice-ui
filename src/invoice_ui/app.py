@@ -1,11 +1,12 @@
 from __future__ import annotations
 
+import base64
 import os
 from pathlib import Path
 
-from dash import Dash, Input, Output, State, callback_context
+from dash import Dash, Input, Output, State, callback_context, dcc
 from dash.exceptions import PreventUpdate
-from reggie_tools import configs
+from reggie_tools import clients, configs
 
 from invoice_ui.components.invoice_results import build_invoice_results
 from invoice_ui.layout import build_layout
@@ -18,11 +19,48 @@ PAGE_SIZE = 5
 USE_LIVE = os.getenv("INVOICE_UI_USE_LIVE", "true").lower() in {"1", "true", "yes"}
 
 _service = get_invoice_service("impl" if USE_LIVE else "demo")
-_initial_page = _service.list_invoices(page=1, page_size=PAGE_SIZE)
 _assets_path = Path(__file__).resolve().parents[2] / "assets"
 
 app = Dash(__name__, title="Hardware Invoice Search", assets_folder=str(_assets_path))
-app.layout = build_layout(_initial_page)
+
+
+def _decode_query_from_fragment(fragment: str | None) -> str:
+    """Decode the search query from the URL fragment (format: search=base64)."""
+    if not fragment:
+        return ""
+    try:
+        # Parse format: search=base64encoded
+        if fragment.startswith("search="):
+            encoded_part = fragment[7:]  # Skip "search="
+        else:
+            # Fallback for old format (just base64)
+            encoded_part = fragment
+
+        # Add padding if needed (base64 requires length to be multiple of 4)
+        padding = 4 - (len(encoded_part) % 4)
+        if padding != 4:
+            encoded_part += "=" * padding
+        decoded_bytes = base64.urlsafe_b64decode(encoded_part)
+        return decoded_bytes.decode("utf-8")
+    except Exception:
+        return ""
+
+
+def _encode_query_to_fragment(query: str) -> str:
+    """Encode the search query to a URL fragment (format: search=base64)."""
+    if not query:
+        return ""
+    encoded_bytes = base64.urlsafe_b64encode(query.encode("utf-8"))
+    encoded_str = encoded_bytes.decode("utf-8").rstrip("=")
+    return f"search={encoded_str}"
+
+
+# Initialize with query from URL fragment if present
+_initial_query = ""
+_initial_page = _service.list_invoices(
+    query=_initial_query or None, page=1, page_size=PAGE_SIZE
+)
+app.layout = build_layout(_initial_page, _initial_query)
 
 
 def _page_to_state(page, query: str, scroll_token: int) -> dict:
@@ -48,7 +86,7 @@ def _state_to_invoices(state: dict) -> list:
     Input("search-query", "value"),
     Input("scroll-trigger", "data"),
     State("invoice-state", "data"),
-    prevent_initial_call=True,
+    prevent_initial_call=False,
 )
 def update_invoice_state(
     query: str | None,
@@ -111,12 +149,155 @@ def render_results(state: dict) -> object:
     return build_invoice_results(invoices, query, state.get("has_more", False))
 
 
+# Initialize fragment handler and read initial fragment on page load
 app.clientside_callback(
     """
-    function tick(n) {
+    function(n) {
+        if (typeof window === "undefined" || !window.__fragmentHandler) {
+            return window.dash_clientside.no_update;
+        }
+        return window.__fragmentHandler.readFragment();
+    }
+    """,
+    Output("search-query", "value"),
+    Input("url", "pathname"),
+    prevent_initial_call=False,
+)
+
+# Listen for fragment changes and update search query
+app.clientside_callback(
+    """
+    function(hash, currentValue) {
+        if (typeof window === "undefined" || !window.__fragmentHandler) {
+            return window.dash_clientside.no_update;
+        }
+        
+        const handler = window.__fragmentHandler;
+        const currentHash = window.location.hash;
+        
+        // Check if this is an internal update we should ignore
+        if (handler.isInternalUpdate(currentHash)) {
+            return window.dash_clientside.no_update;
+        }
+        
+        // External change - decode and update
+        const decoded = handler.readFragment();
+        
+        // Only update if different from current value
+        if (decoded !== (currentValue || '')) {
+            return decoded;
+        }
+        
+        return window.dash_clientside.no_update;
+    }
+    """,
+    Output("search-query", "value", allow_duplicate=True),
+    Input("url", "hash"),
+    State("search-query", "value"),
+    prevent_initial_call=True,
+)
+
+# Update fragment when search query changes
+app.clientside_callback(
+    """
+    function(query) {
+        if (typeof window === "undefined" || !window.__fragmentHandler) {
+            return window.dash_clientside.no_update;
+        }
+        
+        window.__fragmentHandler.updateFragment(query);
+        return window.dash_clientside.no_update;
+    }
+    """,
+    Output("url", "hash", allow_duplicate=True),
+    Input("search-query", "value"),
+    prevent_initial_call=True,
+)
+
+
+@app.callback(
+    Output("download-file", "data"),
+    Input({"type": "download-button", "index": "ALL"}, "n_clicks"),
+    State("invoice-state", "data"),
+    prevent_initial_call=True,
+)
+def handle_download(n_clicks_list: list[int | None], state: dict | None) -> dict | None:
+    """Handle PDF download when download button is clicked."""
+    if not state or not n_clicks_list:
+        raise PreventUpdate
+
+    ctx = callback_context
+    if not ctx.triggered:
+        raise PreventUpdate
+
+    # Find which button was clicked
+    trigger_id = ctx.triggered[0]["prop_id"]
+    if not trigger_id or trigger_id == ".":
+        raise PreventUpdate
+
+    # Extract invoice ID from the trigger
+    try:
+        import json
+
+        trigger_dict = json.loads(trigger_id.replace(".n_clicks", ""))
+        invoice_id = trigger_dict.get("index", "")
+        if not invoice_id or not invoice_id.startswith("invoice-"):
+            raise PreventUpdate
+
+        # Extract invoice number from ID
+        invoice_number = invoice_id.replace("invoice-", "")
+
+        # Find the invoice in state
+        invoices = _state_to_invoices(state)
+        invoice = next(
+            (inv for inv in invoices if inv.invoice.invoice_number == invoice_number),
+            None,
+        )
+
+        if not invoice or not invoice.path:
+            raise PreventUpdate
+
+        # Download file using workspace client
+        workspace = clients.workspace_client()
+        file_path = invoice.path
+
+        # Convert DBFS path to workspace path format
+        # DBFS volumes like dbfs:/Volumes/... should be accessed as /Volumes/...
+        workspace_path = file_path
+        if file_path.startswith("dbfs:/"):
+            workspace_path = file_path[5:]  # Remove "dbfs:" prefix
+
+        # Read file from workspace using workspace client
+        # The files API expects paths without dbfs: prefix for volumes
+        file_response = workspace.files.download(workspace_path)
+        file_content = file_response.contents
+
+        # Extract filename from path
+        filename = file_path.split("/")[-1] if "/" in file_path else "invoice.pdf"
+
+        # Return file data for download
+        return dcc.send_bytes(file_content, filename)
+
+    except Exception as e:
+        # Log error and prevent update
+        import logging
+
+        logging.error(f"Error downloading file: {e}")
+        raise PreventUpdate
+
+
+app.clientside_callback(
+    """
+    function tick(n, state) {
         if (typeof window === "undefined") {
             return 0;
         }
+        
+        // Stop polling if there's no more data
+        if (!state || !state.has_more) {
+            return state ? (state.scroll_token || 0) : 0;
+        }
+        
         const doc = document.documentElement || document.body;
         const scrollTop = window.pageYOffset || doc.scrollTop || 0;
         const innerHeight = window.innerHeight || doc.clientHeight || 0;
@@ -141,6 +322,7 @@ app.clientside_callback(
     """,
     Output("scroll-trigger", "data"),
     Input("scroll-poller", "n_intervals"),
+    State("invoice-state", "data"),
 )
 
 

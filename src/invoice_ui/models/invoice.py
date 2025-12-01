@@ -96,6 +96,7 @@ class Invoice:
     buyer: Party
     seller: Party
     totals: Totals
+    path: str = ""
 
     def searchable_terms(self) -> List[str]:
         """Return the terms that should be matched when filtering."""
@@ -127,13 +128,22 @@ class InvoicePage:
     @property
     def has_more(self) -> bool:
         """Return True when additional pages are available."""
+        # If we got fewer items than requested, we've reached the end
+        if len(self.items) < self.page_size:
+            return False
+        # Otherwise check if there are more pages based on total
         return self.page * self.page_size < self.total
 
 
 def _format_date(date_str: str) -> str:
     """Format a date string stored in ISO format into a readable presentation."""
-    parsed = datetime.fromisoformat(date_str)
-    return parsed.strftime("%b %d, %Y")
+    if not date_str:
+        return "N/A"
+    try:
+        parsed = datetime.fromisoformat(date_str)
+        return parsed.strftime("%b %d, %Y")
+    except (ValueError, TypeError):
+        return "N/A"
 
 
 def serialize_invoice(invoice: Invoice) -> dict:
@@ -164,6 +174,7 @@ def deserialize_invoice(payload: Mapping[str, Any]) -> Invoice:
         buyer=buyer,
         seller=seller,
         totals=totals,
+        path=payload.get("path", ""),
     )
 
 

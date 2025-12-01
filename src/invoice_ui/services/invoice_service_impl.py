@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 from dataclasses import replace
-from json import JSONDecodeError, loads
 from typing import Sequence
 
-from pyspark.sql import Row
+from benedict import benedict
+from pyspark.sql import Window
+from pyspark.sql.functions import col, row_number
 from reggie_core import logs
 from reggie_tools import clients
 
@@ -29,17 +30,13 @@ class InvoiceServiceImpl(InvoiceService):
     """Loads invoices from the reggie warehouse."""
 
     _VIRTUAL_TOTAL = 10000
-    _TABLE_NAME = "reggie_pierce.invoice.info_extract"
+    _TABLE_NAME = "reggie_pierce.invoice_pipeline_dev.info_parse"
 
     def __init__(self) -> None:
-        """Initialize the service and load invoices from the warehouse."""
+        """Initialize the service and connect to the warehouse."""
         LOG.info("Initializing Spark session for invoice import")
         self._spark = clients.spark()
-        self._invoices: Sequence[Invoice] = self._fetch_invoices()
-        if not self._invoices:
-            raise RuntimeError(
-                f"No invoices were retrieved from Spark table '{self._TABLE_NAME}'."
-            )
+        self._total_count: int | None = None
 
     def list_invoices(
         self,
@@ -48,80 +45,117 @@ class InvoiceServiceImpl(InvoiceService):
         page_size: int = 10,
     ) -> InvoicePage:
         """Return a paginated slice of invoices that match the optional query."""
-        filtered = self._apply_filter(query)
         LOG.info(
             "list_invoices - query:%s page: %s page_size:%s",
             query,
             page,
             page_size,
         )
-        unlimited = query is None or not query.strip()
-        if not filtered:
-            return InvoicePage(items=[], total=0, page=page, page_size=page_size)
 
-        total = len(filtered)
         page = max(page, 1)
         page_size = max(page_size, 1)
-        start = (page - 1) * page_size
-        end = start + page_size
+        unlimited = query is None or not query.strip()
 
-        if unlimited:
-            total = self._VIRTUAL_TOTAL
-            if start >= total:
-                return InvoicePage(
-                    items=[], total=total, page=page, page_size=page_size
-                )
-            end = min(end, total)
-            items = self._virtual_slice(filtered, start, end)
+        # Fetch invoices with pagination from Spark
+        invoices = self._fetch_invoices(query=query, page=page, page_size=page_size)
+
+        # Get total count (cached for performance)
+        if self._total_count is None:
+            self._total_count = self._get_total_count(query)
+
+        total = self._VIRTUAL_TOTAL if unlimited else self._total_count
+
+        # For unlimited queries, apply virtual slicing to generate infinite scroll effect
+        # For filtered queries, return invoices as-is from Spark
+        if unlimited and invoices:
+            start = (page - 1) * page_size
+            end = start + len(invoices)
+            items = self._virtual_slice(invoices, start, end)
         else:
-            if start >= total:
-                return InvoicePage(
-                    items=[], total=total, page=page, page_size=page_size
-                )
-            items = filtered[start:end]
+            items = invoices
 
         return InvoicePage(items=items, total=total, page=page, page_size=page_size)
 
-    def _fetch_invoices(self) -> Sequence[Invoice]:
-        """Collect invoices from the Spark table and convert them to dataclasses."""
-        LOG.info("Reading invoices from table '%s'", self._TABLE_NAME)
-        rows = self._spark.read.table(self._TABLE_NAME).selectExpr("info").collect()
-        LOG.info("Retrieved %d rows from '%s'", len(rows), self._TABLE_NAME)
+    def _fetch_invoices(
+        self,
+        query: str | None = None,
+        page: int = 1,
+        page_size: int = 10,
+    ) -> Sequence[Invoice]:
+        """Collect invoices from the Spark table with pagination and convert them to dataclasses."""
+        LOG.info(
+            "Reading invoices from table '%s' - page:%s page_size:%s",
+            self._TABLE_NAME,
+            page,
+            page_size,
+        )
+
+        # Calculate offset for pagination
+        offset = (page - 1) * page_size
+
+        # Build the base query - select both value and path columns
+        df = self._spark.read.table(self._TABLE_NAME).select("value", "path")
+
+        # Apply pagination using Spark SQL window function
+        window = Window.orderBy(col("value"))
+        df_with_row = df.withColumn("row_num", row_number().over(window))
+        df_paginated = df_with_row.filter(
+            (col("row_num") > offset) & (col("row_num") <= offset + page_size)
+        ).select("value", "path")
+
+        rows = df_paginated.collect()
+        dicts = [
+            {
+                "payload": benedict(
+                    row.value.asDict(recursive=True), keyattr_dynamic=True
+                ),
+                "path": row.path if hasattr(row, "path") else "",
+            }
+            for row in rows
+        ]
+
+        LOG.info(
+            "Retrieved %d rows from '%s' (page %s)", len(rows), self._TABLE_NAME, page
+        )
 
         invoices: list[Invoice] = []
-        for index, row in enumerate(rows):
-            payload = row.info
-            if isinstance(payload, str):
-                try:
-                    payload = loads(payload)
-                except JSONDecodeError as exc:
-                    raise ValueError(
-                        f"Row {index} in table '{self._TABLE_NAME}' contains invalid JSON."
-                    ) from exc
-            if isinstance(payload, Row):
-                payload = payload.asDict(recursive=True)
-            if not isinstance(payload, dict):
-                raise TypeError(
-                    f"Row {index} in table '{self._TABLE_NAME}' did not produce a mapping."
-                )
-            parsed = self._parse_invoice(payload)
-            if parsed is None:
-                raise ValueError(
-                    f"Row {index} in table '{self._TABLE_NAME}' is missing required invoice fields."
-                )
-            invoices.append(parsed)
+        for row_data in dicts:
+            invoice = self._parse_invoice(row_data["payload"], row_data.get("path", ""))
+            if invoice:
+                # Apply client-side filtering if query is provided
+                if query and not self._matches_query(invoice, query):
+                    continue
+                invoices.append(invoice)
+
         return invoices
 
-    def _parse_invoice(self, payload: dict | None) -> Invoice | None:
+    def _get_total_count(self, query: str | None = None) -> int:
+        """Get the total count of invoices in the Spark table."""
+        LOG.info("Getting total count from table '%s'", self._TABLE_NAME)
+        df = self._spark.read.table(self._TABLE_NAME)
+        count = df.count()
+        LOG.info("Total count: %d", count)
+        return count
+
+    def _matches_query(self, invoice: Invoice, query: str) -> bool:
+        """Check if an invoice matches the search query."""
+        if not query or not query.strip():
+            return True
+        normalized = query.strip().lower()
+        return any(normalized in value for value in invoice.searchable_terms())
+
+    def _parse_invoice(
+        self, payload: benedict | dict | None, path: str = ""
+    ) -> Invoice | None:
+        """Parse a benedict dictionary into an Invoice dataclass."""
         if not payload:
             return None
 
-        buyer_data = payload.get("buyer") or {}
-        seller_data = payload.get("seller") or {}
-        ship_to_data = payload.get("shipTo") or {}
-        invoice_data = payload.get("invoice") or {}
-        totals_data = payload.get("totals") or {}
-        amount_due = invoice_data.get("amountDue") or {}
+        b = (
+            benedict(payload, keyattr_dynamic=True)
+            if not isinstance(payload, benedict)
+            else payload
+        )
 
         line_items = [
             LineItem(
@@ -134,55 +168,45 @@ class InvoiceServiceImpl(InvoiceService):
                 extended_price=float(item.get("extendedPrice") or 0),
                 quantity_ordered=item.get("quantityOrdered") or 0,
             )
-            for item in payload.get("lineItems") or []
+            for item in b.get("lineItems", [])
         ]
 
         return Invoice(
             line_items=line_items,
             ship_to=ShipTo(
-                name=ship_to_data.get("name", ""),
-                attention=ship_to_data.get("attention", ""),
-                address=ship_to_data.get("address") or [],
+                name=b.get("shipTo.name", ""),
+                attention=b.get("shipTo.attention", ""),
+                address=b.get("shipTo.address", []),
             ),
             invoice=InvoiceDetails(
                 amount_due=Money(
-                    currency=amount_due.get("currency", "USD"),
-                    value=float(amount_due.get("value") or 0),
+                    currency=b.get("invoice.amountDue.currency", "USD"),
+                    value=float(b.get("invoice.amountDue.value", 0)),
                 ),
-                invoice_number=invoice_data.get("invoiceNumber", ""),
-                invoice_date=invoice_data.get("invoiceDate", ""),
-                purchase_order_number=invoice_data.get("purchaseOrderNumber", ""),
-                due_date=invoice_data.get("dueDate"),
-                sales_order_number=invoice_data.get("salesOrderNumber", ""),
-                terms=invoice_data.get("terms", ""),
+                invoice_number=b.get("invoice.invoiceNumber", ""),
+                invoice_date=b.get("invoice.invoiceDate", ""),
+                purchase_order_number=b.get("invoice.purchaseOrderNumber", ""),
+                due_date=b.get("invoice.dueDate"),
+                sales_order_number=b.get("invoice.salesOrderNumber", ""),
+                terms=b.get("invoice.terms", ""),
             ),
             buyer=Party(
-                name=buyer_data.get("name", ""),
-                address=buyer_data.get("address") or [],
+                name=b.get("buyer.name", ""),
+                address=b.get("buyer.address", []),
             ),
             seller=Party(
-                name=seller_data.get("name", ""),
-                address=seller_data.get("address") or [],
+                name=b.get("seller.name", ""),
+                address=b.get("seller.address", []),
             ),
             totals=Totals(
-                currency=totals_data.get("currency", "USD"),
-                shipping=float(totals_data.get("shipping") or 0),
-                subtotal=float(totals_data.get("subtotal") or 0),
-                tax=float(totals_data.get("tax") or 0),
-                total=float(totals_data.get("total") or 0),
+                currency=b.get("totals.currency", "USD"),
+                shipping=float(b.get("totals.shipping", 0)),
+                subtotal=float(b.get("totals.subtotal", 0)),
+                tax=float(b.get("totals.tax", 0)),
+                total=float(b.get("totals.total", 0)),
             ),
+            path=path,
         )
-
-    def _apply_filter(self, query: str | None) -> Sequence[Invoice]:
-        if query is None or not query.strip():
-            return list(self._invoices)
-
-        normalized = query.strip().lower()
-        return [
-            invoice
-            for invoice in self._invoices
-            if any(normalized in value for value in invoice.searchable_terms())
-        ]
 
     def _virtual_slice(
         self,
