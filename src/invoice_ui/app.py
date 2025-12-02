@@ -390,7 +390,7 @@ def main() -> None:
     """Entrypoint used by uv via `uv run invoice_ui`."""
     if USE_LIVE:
         configs.get()
-    app.run(debug=True, host="0.0.0.0", port=8050, dev_tools_hot_reload=False)
+    app.run(debug=True, host="0.0.0.0", port=8000, dev_tools_hot_reload=False)
 
 
 if __name__ == "__main__":
