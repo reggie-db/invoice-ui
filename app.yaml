@@ -1,4 +1,4 @@
-command: ["python", "-m", "invoice_ui"]
+command: ["uv", "run", "invoice_ui"]
 
 env:
   - name: "INVOICE_TABLE_NAME"
