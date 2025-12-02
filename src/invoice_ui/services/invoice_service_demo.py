@@ -1,11 +1,11 @@
 from __future__ import annotations
 
-from dataclasses import replace
 from typing import Sequence
 
 from invoice_ui.data.demo_invoices import DEMO_INVOICES
 from invoice_ui.models.invoice import Invoice, InvoicePage
 from invoice_ui.services.invoice_service import InvoiceService
+from invoice_ui.utils.invoice_helpers import matches_query, virtual_slice
 
 """Demo implementation of the InvoiceService that ships with static data."""
 
@@ -44,7 +44,7 @@ class DemoInvoiceService(InvoiceService):
                     items=[], total=total, page=page, page_size=page_size
                 )
             end = min(end, total)
-            items = self._virtual_slice(filtered, start, end)
+            items = virtual_slice(filtered, start, end)
         else:
             if start >= total:
                 return InvoicePage(
@@ -55,44 +55,7 @@ class DemoInvoiceService(InvoiceService):
         return InvoicePage(items=items, total=total, page=page, page_size=page_size)
 
     def _apply_filter(self, query: str | None) -> Sequence[Invoice]:
+        """Filter invoices based on search query."""
         if query is None or not query.strip():
             return list(self._invoices)
-
-        normalized = query.strip().lower()
-        return [
-            invoice
-            for invoice in self._invoices
-            if any(normalized in value for value in invoice.searchable_terms())
-        ]
-
-    def _virtual_slice(
-        self,
-        base: Sequence[Invoice],
-        start: int,
-        end: int,
-    ) -> Sequence[Invoice]:
-        count = max(end - start, 0)
-        if count == 0 or not base:
-            return []
-
-        result: list[Invoice] = []
-        base_len = len(base)
-        for offset in range(count):
-            index = start + offset
-            template = base[index % base_len]
-            result.append(self._virtual_invoice(template, index))
-        return result
-
-    def _virtual_invoice(self, template: Invoice, index: int) -> Invoice:
-        suffix = f"-{index + 1:04d}"
-        invoice_details = replace(
-            template.invoice,
-            invoice_number=f"{template.invoice.invoice_number}{suffix}",
-            purchase_order_number=f"{template.invoice.purchase_order_number}{suffix}",
-            sales_order_number=f"{template.invoice.sales_order_number}{suffix}",
-        )
-        ship_to = replace(
-            template.ship_to,
-            attention=f"{template.ship_to.attention} #{(index % 5) + 1}",
-        )
-        return replace(template, invoice=invoice_details, ship_to=ship_to)
+        return [invoice for invoice in self._invoices if matches_query(invoice, query)]

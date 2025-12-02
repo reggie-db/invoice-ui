@@ -6,6 +6,7 @@ from dash import html
 from dash_iconify import DashIconify
 
 from invoice_ui.models.invoice import Invoice, LineItem, Party, ShipTo
+from invoice_ui.utils.invoice_helpers import format_currency
 
 """Reusable invoice card component."""
 
@@ -61,6 +62,7 @@ def _build_header(invoice: Invoice, invoice_id: str) -> html.Div:
             html.Button(
                 id={"type": "download-button", "index": invoice_id},
                 className="button primary ghost gap",
+                n_clicks=0,
                 children=[
                     DashIconify(icon="lucide:download", className="button-icon"),
                     "Download PDF",
@@ -164,7 +166,7 @@ def _line_item_card(item: LineItem, currency: str) -> html.Div:
                             ),
                             _info_block(
                                 "Unit Price",
-                                _format_currency(item.unit_price, currency),
+                                format_currency(item.unit_price, currency),
                             ),
                         ],
                     ),
@@ -175,7 +177,7 @@ def _line_item_card(item: LineItem, currency: str) -> html.Div:
                 children=[
                     html.Span("Extended Price", className="label"),
                     html.Span(
-                        _format_currency(item.extended_price, currency),
+                        format_currency(item.extended_price, currency),
                         className="value",
                     ),
                 ],
@@ -231,7 +233,7 @@ def _totals_row(
         className=classes,
         children=[
             html.Span(label),
-            html.Span(_format_currency(value, currency)),
+            html.Span(format_currency(value, currency)),
         ],
     )
 
@@ -281,8 +283,3 @@ def _meta_item(icon: str, label: str) -> html.Span:
             html.Span(label),
         ],
     )
-
-
-def _format_currency(value: float, currency: str) -> str:
-    """Format a currency amount using the invoice currency symbol."""
-    return f"{currency} {value:,.2f}"

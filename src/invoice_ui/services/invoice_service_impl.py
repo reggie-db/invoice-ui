@@ -1,11 +1,12 @@
 from __future__ import annotations
 
-from dataclasses import replace
+import json
+import os
 from typing import Sequence
 
 from benedict import benedict
 from pyspark.sql import Window
-from pyspark.sql.functions import col, row_number
+from pyspark.sql.functions import col, lower, row_number
 from reggie_core import logs
 from reggie_tools import clients
 
@@ -20,17 +21,20 @@ from invoice_ui.models.invoice import (
     Totals,
 )
 from invoice_ui.services.invoice_service import InvoiceService
+from invoice_ui.utils.invoice_helpers import matches_query, virtual_slice
 
-"""Invoice service implementation that hydrates invoices from the Spark info column."""
+"""Invoice service implementation that loads invoices from Spark table."""
 
 LOG = logs.logger(__file__)
 
 
 class InvoiceServiceImpl(InvoiceService):
-    """Loads invoices from the reggie warehouse."""
+    """Loads invoices from the warehouse."""
 
     _VIRTUAL_TOTAL = 10000
-    _TABLE_NAME = "reggie_pierce.invoice_pipeline_dev.info_parse"
+    _TABLE_NAME = os.getenv(
+        "INVOICE_TABLE_NAME", "reggie_pierce.invoice_pipeline_dev.info_parse"
+    )
 
     def __init__(self) -> None:
         """Initialize the service and connect to the warehouse."""
@@ -70,7 +74,7 @@ class InvoiceServiceImpl(InvoiceService):
         if unlimited and invoices:
             start = (page - 1) * page_size
             end = start + len(invoices)
-            items = self._virtual_slice(invoices, start, end)
+            items = virtual_slice(invoices, start, end)
         else:
             items = invoices
 
@@ -95,6 +99,10 @@ class InvoiceServiceImpl(InvoiceService):
 
         # Build the base query - select both value and path columns
         df = self._spark.read.table(self._TABLE_NAME).select("value", "path")
+        if query:
+            query = query.lower().strip()
+            if query:
+                df = df.filter(lower(col("value").cast("string")).contains(query))
 
         # Apply pagination using Spark SQL window function
         window = Window.orderBy(col("value"))
@@ -104,15 +112,20 @@ class InvoiceServiceImpl(InvoiceService):
         ).select("value", "path")
 
         rows = df_paginated.collect()
-        dicts = [
-            {
-                "payload": benedict(
-                    row.value.asDict(recursive=True), keyattr_dynamic=True
-                ),
-                "path": row.path if hasattr(row, "path") else "",
-            }
-            for row in rows
-        ]
+        dicts = []
+        for row in rows:
+            # Handle value column - could be JSON string or Row object
+            value_data = row.value
+            if isinstance(value_data, str):
+                value_data = json.loads(value_data)
+            elif hasattr(value_data, "asDict"):
+                value_data = value_data.asDict(recursive=True)
+            dicts.append(
+                {
+                    "payload": benedict(value_data, keyattr_dynamic=True),
+                    "path": getattr(row, "path", ""),
+                }
+            )
 
         LOG.info(
             "Retrieved %d rows from '%s' (page %s)", len(rows), self._TABLE_NAME, page
@@ -123,7 +136,7 @@ class InvoiceServiceImpl(InvoiceService):
             invoice = self._parse_invoice(row_data["payload"], row_data.get("path", ""))
             if invoice:
                 # Apply client-side filtering if query is provided
-                if query and not self._matches_query(invoice, query):
+                if query and not matches_query(invoice, query):
                     continue
                 invoices.append(invoice)
 
@@ -136,13 +149,6 @@ class InvoiceServiceImpl(InvoiceService):
         count = df.count()
         LOG.info("Total count: %d", count)
         return count
-
-    def _matches_query(self, invoice: Invoice, query: str) -> bool:
-        """Check if an invoice matches the search query."""
-        if not query or not query.strip():
-            return True
-        normalized = query.strip().lower()
-        return any(normalized in value for value in invoice.searchable_terms())
 
     def _parse_invoice(
         self, payload: benedict | dict | None, path: str = ""
@@ -207,35 +213,3 @@ class InvoiceServiceImpl(InvoiceService):
             ),
             path=path,
         )
-
-    def _virtual_slice(
-        self,
-        base: Sequence[Invoice],
-        start: int,
-        end: int,
-    ) -> Sequence[Invoice]:
-        count = max(end - start, 0)
-        if count == 0 or not base:
-            return []
-
-        result: list[Invoice] = []
-        base_len = len(base)
-        for offset in range(count):
-            index = start + offset
-            template = base[index % base_len]
-            result.append(self._virtual_invoice(template, index))
-        return result
-
-    def _virtual_invoice(self, template: Invoice, index: int) -> Invoice:
-        suffix = f"-{index + 1:04d}"
-        invoice_details = replace(
-            template.invoice,
-            invoice_number=f"{template.invoice.invoice_number}{suffix}",
-            purchase_order_number=f"{template.invoice.purchase_order_number}{suffix}",
-            sales_order_number=f"{template.invoice.sales_order_number}{suffix}",
-        )
-        ship_to = replace(
-            template.ship_to,
-            attention=f"{template.ship_to.attention} #{(index % 5) + 1}",
-        )
-        return replace(template, invoice=invoice_details, ship_to=ship_to)

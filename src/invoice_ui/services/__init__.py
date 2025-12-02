@@ -15,8 +15,8 @@ from invoice_ui.services.invoice_service_impl import InvoiceServiceImpl
 LOG = logs.logger(__file__)
 
 _SERVICE_REGISTRY: Dict[str, Callable[[], InvoiceService]] = {
-    "demo": DemoInvoiceService,
-    "impl": InvoiceServiceImpl,
+    "demo": lambda: DemoInvoiceService(),
+    "impl": lambda: InvoiceServiceImpl(),
 }
 
 

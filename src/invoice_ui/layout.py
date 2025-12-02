@@ -27,7 +27,6 @@ def build_layout(initial_page: InvoicePage, initial_query: str = "") -> html.Div
             dcc.Download(id="download-file"),
             dcc.Store(id="invoice-state", data=initial_state),
             dcc.Store(id="scroll-trigger", data=0),
-            dcc.Interval(id="scroll-poller", interval=800, n_intervals=0),
             html.Div(
                 className="app-container",
                 children=[
