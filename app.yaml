@@ -1,4 +1,4 @@
-command: ["uv", "run", "invoice_ui"]
+command: ["/bin/bash", "run.sh"]
 
 env:
   - name: "INVOICE_TABLE_NAME"
