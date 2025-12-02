@@ -158,7 +158,6 @@ def _line_item_card(item: LineItem, currency: str) -> html.Div:
                     html.Div(
                         className="line-item-grid",
                         children=[
-                            _info_block("Line #", item.line_number),
                             _info_block("MFR Part #", item.manufacturer_part_number),
                             _info_block(
                                 "Quantity",

@@ -1,0 +1,8 @@
+name: invoice_ui_app
+
+entry_point:
+  file: app.py
+  command: uv run invoice_ui
+
+env:
+  INVOICE_TABLE_NAME: "{{var.invoice_table_name}}"
