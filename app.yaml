@@ -1,6 +1,5 @@
-entry_point:
-  command: ["uv", "run", "invoice_ui"]
+command: ["python", "-m", "invoice_ui"]
 
 env:
   - name: "INVOICE_TABLE_NAME"
-    value: "{{var.invoice_table_name}}"
+    value: ""

@@ -98,6 +98,11 @@ class Invoice:
     totals: Totals
     path: str = ""
 
+    @property
+    def dueDate(self) -> str:
+        """Return the formatted due date for UI display."""
+        return self.invoice.formatted_due_date()
+
     def searchable_terms(self) -> List[str]:
         """Return the terms that should be matched when filtering."""
         terms: List[str] = [

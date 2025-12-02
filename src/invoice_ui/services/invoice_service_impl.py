@@ -32,9 +32,9 @@ class InvoiceServiceImpl(InvoiceService):
     """Loads invoices from the warehouse."""
 
     _VIRTUAL_TOTAL = 10000
-    _TABLE_NAME = os.getenv(
-        "INVOICE_TABLE_NAME", "reggie_pierce.invoice_pipeline_dev.info_parse"
-    )
+    _TABLE_NAME = os.getenv("INVOICE_TABLE_NAME", "")
+    if not _TABLE_NAME:
+        _TABLE_NAME = "reggie_pierce.invoice_pipeline_dev.info_parse"
 
     def __init__(self) -> None:
         """Initialize the service and connect to the warehouse."""

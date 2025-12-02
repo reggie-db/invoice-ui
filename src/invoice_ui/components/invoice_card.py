@@ -95,7 +95,7 @@ def _build_order_details(invoice: Invoice) -> html.Div:
         children=[
             _info_block("Purchase Order", invoice.invoice.purchase_order_number),
             _info_block("Sales Order", invoice.invoice.sales_order_number),
-            _info_block("Due Date", invoice.invoice.formatted_due_date()),
+            _info_block("Due Date", invoice.dueDate),
         ],
     )
 
