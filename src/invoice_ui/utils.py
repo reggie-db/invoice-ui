@@ -53,9 +53,9 @@ def format_currency(value: float, currency: str) -> str:
 
 def matches_query(invoice: "Invoice", query: str) -> bool:
     """Check if an invoice matches the search query."""
-    if not query or not query.strip():
-        return True
     normalized = query.strip().lower()
+    if not normalized:
+        return True
     return any(normalized in value for value in invoice.searchable_terms())
 
 
@@ -65,17 +65,12 @@ def virtual_slice(
     end: int,
 ) -> Sequence["Invoice"]:
     """Generate a virtual slice of invoices for infinite scroll."""
-    count = max(end - start, 0)
-    if count == 0 or not base:
-        return []
-
-    result: list["Invoice"] = []
+    count = end - start
     base_len = len(base)
-    for offset in range(count):
-        index = start + offset
-        template = base[index % base_len]
-        result.append(virtual_invoice(template, index))
-    return result
+    return [
+        virtual_invoice(base[(start + offset) % base_len], start + offset)
+        for offset in range(count)
+    ]
 
 
 def virtual_invoice(template: "Invoice", index: int) -> "Invoice":

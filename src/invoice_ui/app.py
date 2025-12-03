@@ -243,8 +243,6 @@ app.clientside_callback(
 )
 def handle_download(n_clicks_list: list[int | None], state: dict | None) -> dict | None:
     """Handle PDF download when download button is clicked."""
-    import json
-
     ctx = callback_context
 
     # Check if any button was actually clicked (not just initial render)
@@ -257,25 +255,9 @@ def handle_download(n_clicks_list: list[int | None], state: dict | None) -> dict
     # Get the triggered button's ID from context
     triggered_id = ctx.triggered_id
 
-    # triggered_id should be a dict like {"type": "download-button", "index": "invoice-123"}
-    if not triggered_id:
-        # Fallback: parse from prop_id
-        prop_id = ctx.triggered[0].get("prop_id", "")
-        if ".n_clicks" in prop_id:
-            id_str = prop_id.replace(".n_clicks", "")
-            try:
-                triggered_id = json.loads(id_str)
-            except json.JSONDecodeError:
-                LOG.error("Failed to parse prop_id: %s", prop_id)
-                raise PreventUpdate
-
-    if not isinstance(triggered_id, dict):
-        LOG.error("triggered_id is not a dict: %s", triggered_id)
-        raise PreventUpdate
-
+    # triggered_id is a dict like {"type": "download-button", "index": "invoice-123"}
     invoice_id = triggered_id.get("index", "")
-    if not invoice_id or not invoice_id.startswith("invoice-"):
-        LOG.warning("Invalid invoice ID: %s", invoice_id)
+    if not invoice_id.startswith("invoice-"):
         raise PreventUpdate
 
     # Extract invoice number from ID
@@ -289,12 +271,7 @@ def handle_download(n_clicks_list: list[int | None], state: dict | None) -> dict
         None,
     )
 
-    if not invoice:
-        LOG.warning("Invoice not found: %s", invoice_number)
-        raise PreventUpdate
-
-    if not invoice.path:
-        LOG.warning("Invoice has no path: %s", invoice_number)
+    if not invoice or not invoice.path:
         raise PreventUpdate
 
     LOG.info("Downloading from path: %s", invoice.path)

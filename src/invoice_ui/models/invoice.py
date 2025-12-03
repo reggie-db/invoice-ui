@@ -142,36 +142,20 @@ class InvoicePage:
         return self.page * self.page_size < self.total
 
 
-def _format_date(date: datetime | str | None) -> str:
-    """Format a datetime object or date string into a readable presentation."""
+def _format_date(date: datetime | None) -> str:
+    """Format a datetime object into a readable presentation."""
     if not date:
         return "N/A"
-    
-    # Handle datetime objects
-    if isinstance(date, datetime):
-        return date.strftime("%b %d, %Y")
-    
-    # Handle string dates (fallback for backwards compatibility)
-    if isinstance(date, str):
-        try:
-            parsed = datetime.fromisoformat(date)
-            return parsed.strftime("%b %d, %Y")
-        except (ValueError, TypeError):
-            return "N/A"
-    
-    return "N/A"
+    return date.strftime("%b %d, %Y")
 
 
 def serialize_invoice(invoice: Invoice) -> dict:
     """Convert an Invoice dataclass into a JSON serializable dictionary."""
     data = asdict(invoice)
     # Convert datetime objects to ISO format strings for JSON serialization
-    if "invoice" in data and "invoice_date" in data["invoice"]:
-        if isinstance(data["invoice"]["invoice_date"], datetime):
-            data["invoice"]["invoice_date"] = data["invoice"]["invoice_date"].isoformat()
-    if "invoice" in data and "due_date" in data["invoice"]:
-        if isinstance(data["invoice"]["due_date"], datetime):
-            data["invoice"]["due_date"] = data["invoice"]["due_date"].isoformat()
+    data["invoice"]["invoice_date"] = invoice.invoice.invoice_date.isoformat()
+    if invoice.invoice.due_date:
+        data["invoice"]["due_date"] = invoice.invoice.due_date.isoformat()
     return data
 
 
@@ -201,37 +185,22 @@ def deserialize_page(data: dict) -> InvoicePage:
 
 def deserialize_invoice(payload: Mapping[str, Any]) -> Invoice:
     """Convert a dictionary structure back into an Invoice dataclass."""
-    line_items = [LineItem(**item) for item in payload["line_items"]]
-    ship_to = ShipTo(**payload["ship_to"])
-    buyer = Party(**payload["buyer"])
-    seller = Party(**payload["seller"])
-    totals = Totals(**payload["totals"])
-    
-    # Parse date strings to datetime objects
-    invoice_date_str = payload["invoice"]["invoice_date"]
-    invoice_date = parse_date(invoice_date_str) if invoice_date_str else None
-    if invoice_date is None:
-        raise ValueError(f"Invalid invoice_date: {invoice_date_str}")
-    
-    due_date_str = payload["invoice"].get("due_date")
-    due_date = parse_date(due_date_str) if due_date_str else None
-    
-    invoice_details = InvoiceDetails(
-        amount_due=Money(**payload["invoice"]["amount_due"]),
-        invoice_number=payload["invoice"]["invoice_number"],
-        invoice_date=invoice_date,
-        purchase_order_number=payload["invoice"]["purchase_order_number"],
-        due_date=due_date,
-        sales_order_number=payload["invoice"]["sales_order_number"],
-        terms=payload["invoice"]["terms"],
-    )
+    inv = payload["invoice"]
     return Invoice(
-        line_items=line_items,
-        ship_to=ship_to,
-        invoice=invoice_details,
-        buyer=buyer,
-        seller=seller,
-        totals=totals,
+        line_items=[LineItem(**item) for item in payload["line_items"]],
+        ship_to=ShipTo(**payload["ship_to"]),
+        buyer=Party(**payload["buyer"]),
+        seller=Party(**payload["seller"]),
+        totals=Totals(**payload["totals"]),
+        invoice=InvoiceDetails(
+            amount_due=Money(**inv["amount_due"]),
+            invoice_number=inv["invoice_number"],
+            invoice_date=parse_date(inv["invoice_date"]) or datetime.now(),
+            purchase_order_number=inv["purchase_order_number"],
+            due_date=parse_date(inv.get("due_date")),
+            sales_order_number=inv["sales_order_number"],
+            terms=inv["terms"],
+        ),
         path=payload.get("path", ""),
     )
 

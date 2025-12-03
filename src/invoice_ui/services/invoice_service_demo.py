@@ -56,6 +56,4 @@ class DemoInvoiceService(InvoiceService):
 
     def _apply_filter(self, query: str | None) -> Sequence[Invoice]:
         """Filter invoices based on search query."""
-        if query is None or not query.strip():
-            return list(self._invoices)
-        return [invoice for invoice in self._invoices if matches_query(invoice, query)]
+        return [inv for inv in self._invoices if matches_query(inv, query or "")]

@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 import os
 from datetime import datetime
 
@@ -66,16 +65,13 @@ class InvoiceServiceImpl(InvoiceService):
 
         rows = df.select("value", "path").collect()
 
-        items = []
-        for row in rows:
-            value = row.value
-            if isinstance(value, str):
-                value = json.loads(value)
-            elif hasattr(value, "asDict"):
-                value = value.asDict(recursive=True)
-            items.append(
-                self._parse_invoice(benedict(value, keyattr_dynamic=True), row.path)
+        items = [
+            self._parse_invoice(
+                benedict(row.value.asDict(recursive=True), keyattr_dynamic=True),
+                row.path,
             )
+            for row in rows
+        ]
 
         return InvoicePage(
             items=items,
