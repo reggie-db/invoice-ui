@@ -22,24 +22,26 @@ def parse_date(date_str: str | None) -> datetime | None:
     Returns:
         datetime object if parsing succeeds, None otherwise
     """
+    if date_str:
+        date_str = date_str.strip()
     if not date_str:
         return None
 
     # Try m/d/y format first (e.g., "12/25/2024", "1/5/2024")
     try:
-        return datetime.strptime(date_str.strip(), "%m/%d/%Y")
+        return datetime.strptime(date_str, "%m/%d/%Y")
     except ValueError:
         pass
 
     # Try m/d/y with 2-digit year (e.g., "12/25/24")
     try:
-        return datetime.strptime(date_str.strip(), "%m/%d/%y")
+        return datetime.strptime(date_str, "%m/%d/%y")
     except ValueError:
         pass
 
     # Try ISO format as fallback (e.g., "2024-12-25")
     try:
-        return datetime.fromisoformat(date_str.strip())
+        return datetime.fromisoformat(date_str)
     except (ValueError, TypeError):
         pass
 

@@ -8,6 +8,7 @@ dependencies = [
     "dash>=2.17",
     "dash-iconify>=0.1.2",
     "reggie-tools @ git+https://github.com/reggie-db/reggie-bricks-py.git@main#subdirectory=reggie-tools",
+    "reggie-concurio @ git+https://github.com/reggie-db/reggie-bricks-py.git@main#subdirectory=reggie-concurio",
     "python-benedict"
 ]
 

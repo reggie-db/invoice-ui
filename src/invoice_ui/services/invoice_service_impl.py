@@ -6,8 +6,10 @@ from datetime import datetime
 from benedict import benedict
 from pyspark.sql import Window
 from pyspark.sql import functions as F
-from reggie_core import logs
-from reggie_tools import clients
+from pyspark.sql.dataframe import DataFrame
+from reggie_concurio import caches
+from reggie_core import logs, paths
+from reggie_tools import clients, genie
 
 from invoice_ui.models.invoice import (
     Invoice,
@@ -30,9 +32,20 @@ class InvoiceServiceImpl(InvoiceService):
         os.getenv("INVOICE_TABLE_NAME", "")
         or "reggie_pierce.invoice_pipeline_dev.info_parse"
     )
+    _DISK_CACHE = caches.DiskCache(paths.temp_dir() / "invoice_service_v2")
 
     def __init__(self) -> None:
         self._spark = clients.spark()
+        genie_space_id = os.getenv("INVOICE_GENIE_SPACE_ID", "")
+        if genie_space_id:
+            wc = clients.workspace_client()
+            self._genie_service = genie.Service(wc, genie_space_id)
+            self._genie_conversation_id = self._genie_service.create_conversation(
+                "Answer questions about invoices"
+            ).conversation_id
+        else:
+            self._genie_service = None
+            self._genie_conversation_id = None
 
     def list_invoices(
         self,
@@ -43,11 +56,12 @@ class InvoiceServiceImpl(InvoiceService):
         page = max(page, 1)
         page_size = max(page_size, 1)
 
-        df = self._spark.read.table(self._TABLE_NAME).select("value", "path")
-
-        if query:
-            q = query.strip().lower()
-            df = df.filter(F.lower(F.col("value").cast("string")).contains(q))
+        df = self._apply_filter(
+            self._spark.read.table(self._TABLE_NAME).select(
+                "content_hash", "value", "path"
+            ),
+            query,
+        )
 
         total = df.count()
 
@@ -132,3 +146,38 @@ class InvoiceServiceImpl(InvoiceService):
             ),
             path=path,
         )
+
+    def _apply_filter(self, df: DataFrame, query: str | None) -> DataFrame:
+        if query:
+            query = query.strip().lower()
+        if not query:
+            return df
+        content_hashes = self._filter_content_hash(query)
+        if content_hashes is not None:
+            return df.filter(F.col("content_hash").isin(content_hashes))
+        df = df.filter(F.lower(F.col("value").cast("string")).contains(query))
+        return df
+
+    def _filter_content_hash(self, query: str) -> list[str] | None:
+        if not self._genie_service:
+            return None
+
+        def _load():
+            respones = self._genie_service.chat(self._genie_conversation_id, query)
+            for response in respones:
+                LOG.info(f"Query response: {response}")
+                for response_query in response.queries:
+                    try:
+                        rows = self._spark.sql(response_query).collect()
+                        content_hashes = []
+                        for row in rows:
+                            content_hashes.append(row.content_hash)
+                        LOG.info(f"Query complete. Content hashes: {content_hashes}")
+                        return content_hashes
+                    except Exception:
+                        LOG.warning(f"Query error {query}", exc_info=True)
+            return None
+
+        return self._DISK_CACHE.get_or_load(
+            self._genie_conversation_id + query, _load
+        ).value

@@ -50,7 +50,7 @@ def _build_header(invoice: Invoice, invoice_id: str) -> html.Div:
                             ),
                             _meta_item(
                                 icon="lucide:dollar-sign",
-                                label=f"{invoice.invoice.amount_due.currency} {invoice.invoice.amount_due.value:,.2f}",
+                                label=invoice.invoice.amount_due.format(),
                             ),
                             html.Span(
                                 invoice.invoice.terms, className="badge secondary"
@@ -264,14 +264,13 @@ def _party_block(
     include_attention: bool = False,
 ) -> html.Div:
     """Return a block describing one of the parties involved in the invoice."""
-    address_lines = getattr(party, "address", [])
     children = [
         html.Span(label, className="label"),
-        html.Span(getattr(party, "name", ""), className="value"),
+        html.Span(party.name, className="value"),
     ]
-    if include_attention and hasattr(party, "attention"):
+    if include_attention and isinstance(party, ShipTo):
         children.append(html.Span(f"Attn: {party.attention}", className="muted"))
-    children.extend(html.Span(line, className="muted") for line in address_lines)
+    children.extend(html.Span(line, className="muted") for line in party.address)
 
     return html.Div(
         className="party-block",

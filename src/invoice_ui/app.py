@@ -11,7 +11,6 @@ from reggie_tools import clients, configs
 from invoice_ui.components.invoice_results import build_invoice_results
 from invoice_ui.layout import build_layout
 from invoice_ui.models.invoice import (
-    InvoicePage,
     deserialize_page,
     serialize_invoice,
     serialize_page,
@@ -22,13 +21,40 @@ from invoice_ui.services import get_invoice_service
 
 LOG = logs.logger(__file__)
 
-PAGE_SIZE = 1
+PAGE_SIZE = 10
 USE_LIVE = os.getenv("INVOICE_UI_USE_LIVE", "true").lower() in {"1", "true", "yes"}
 
 _service = get_invoice_service("impl" if USE_LIVE else "demo")
 _assets_path = Path(__file__).resolve().parents[2] / "assets"
 
-app = Dash(__name__, title="Hardware Invoice Search", assets_folder=str(_assets_path))
+app = Dash(
+    __name__,
+    title="Hardware Invoice Search",
+    assets_folder=str(_assets_path),
+    update_title=None,
+)
+
+# Set custom index string to include favicon and Source Sans 3 font (Proxima Nova alternative)
+app.index_string = """<!DOCTYPE html>
+<html>
+    <head>
+        {%metas%}
+        <title>{%title%}</title>
+        <link rel="icon" type="image/x-icon" href="/assets/favicon.ico">
+        <link rel="preconnect" href="https://fonts.googleapis.com">
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link href="https://fonts.googleapis.com/css2?family=Source+Sans+3:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&display=swap" rel="stylesheet">
+        {%css%}
+    </head>
+    <body>
+        {%app_entry%}
+        <footer>
+            {%config%}
+            {%scripts%}
+            {%renderer%}
+        </footer>
+    </body>
+</html>"""
 
 
 # Initialize with query from URL fragment if present
@@ -37,11 +63,6 @@ _initial_page = _service.list_invoices(
     query=_initial_query or None, page=1, page_size=PAGE_SIZE
 )
 app.layout = build_layout(_initial_page, _initial_query)
-
-
-def _state_to_page(state: dict) -> InvoicePage:
-    """Convert stored state back into an InvoicePage."""
-    return deserialize_page(state)
 
 
 @app.callback(
@@ -108,70 +129,37 @@ def render_results(state: dict) -> object:
     """Render invoice results whenever the backing store changes."""
     if not state:
         raise PreventUpdate
-    page = _state_to_page(state)
-    query = state.get("query") or ""
-    has_more = state.get("has_more", False)
-    return build_invoice_results(page, query, has_more)
+    return build_invoice_results(
+        deserialize_page(state), state.get("query", ""), state.get("has_more", False)
+    )
 
+
+# Shared hash decode logic - must be a complete function for each callback
+_DECODE_HASH_FN = """
+    function(trigger) {
+        const hash = window.location.hash.substring(1);
+        if (!hash || !hash.startsWith('search/')) return '';
+        try {
+            const encoded = hash.substring(7);
+            const padding = 4 - (encoded.length % 4);
+            return atob(padding !== 4 ? encoded + '='.repeat(padding) : encoded);
+        } catch (e) {
+            return '';
+        }
+    }
+"""
 
 # Initialize hash router and read initial hash on page load
-# The hash-router-handler.js will handle routing and update search-query via dash.set_props
-# This callback ensures Dash is aware of the initial value
 app.clientside_callback(
-    """
-    function(n) {
-        if (typeof window === "undefined") {
-            return window.dash_clientside.no_update;
-        }
-        
-        // Read current hash and decode if present
-        const hash = window.location.hash.substring(1);
-        if (hash && hash.startsWith('search/')) {
-            const encoded = hash.substring(7);
-            try {
-                const padding = 4 - (encoded.length % 4);
-                const padded = padding !== 4 ? encoded + '='.repeat(padding) : encoded;
-                return atob(padded);
-            } catch (e) {
-                return '';
-            }
-        }
-        
-        return '';
-    }
-    """,
+    _DECODE_HASH_FN,
     Output("search-query", "value"),
     Input("url", "pathname"),
     prevent_initial_call=False,
 )
 
-# Listen for hash changes - hash-router handles this, but we sync with Dash
+# Listen for hash changes and sync with Dash
 app.clientside_callback(
-    """
-    function(hash) {
-        if (typeof window === "undefined") {
-            return window.dash_clientside.no_update;
-        }
-        
-        // Hash router will handle the routing and call updateSearchInput
-        // But we also decode here to ensure Dash state is updated
-        const currentHash = window.location.hash.substring(1);
-        let decoded = '';
-        
-        if (currentHash && currentHash.startsWith('search/')) {
-            const encoded = currentHash.substring(7);
-            try {
-                const padding = 4 - (encoded.length % 4);
-                const padded = padding !== 4 ? encoded + '='.repeat(padding) : encoded;
-                decoded = atob(padded);
-            } catch (e) {
-                decoded = '';
-            }
-        }
-        
-        return decoded;
-    }
-    """,
+    _DECODE_HASH_FN,
     Output("search-query", "value", allow_duplicate=True),
     Input("url", "hash"),
     prevent_initial_call=True,
@@ -265,7 +253,7 @@ def handle_download(n_clicks_list: list[int | None], state: dict | None) -> dict
     LOG.info("Download requested for invoice: %s", invoice_number)
 
     # Find the invoice in state
-    page = _state_to_page(state)
+    page = deserialize_page(state)
     invoice = next(
         (inv for inv in page.items if inv.invoice.invoice_number == invoice_number),
         None,
@@ -302,163 +290,60 @@ def handle_download(n_clicks_list: list[int | None], state: dict | None) -> dict
 
 
 # Initialize scroll listener and handle scroll events
-# This callback watches the invoice-state and sets up scroll detection
 app.clientside_callback(
     """
     function(state) {
-        if (typeof window === "undefined") {
-            return window.dash_clientside.no_update;
-        }
+        if (typeof window === "undefined") return window.dash_clientside.no_update;
         
-        // Store current state for scroll handler to access
         window.__invoiceState = state;
         
-        // Initialize scroll listener if not already done
+        // Shared: check if should load more and trigger if needed
+        function shouldLoadMore() {
+            const st = window.__invoiceState;
+            if (!st || !st.has_more || window.__invoiceScrollPending) return false;
+            const doc = document.documentElement || document.body;
+            const scrollTop = window.pageYOffset || doc.scrollTop || 0;
+            const viewHeight = window.innerHeight || doc.clientHeight || 0;
+            const scrollHeight = doc.scrollHeight || document.body.scrollHeight || 0;
+            return scrollTop + viewHeight >= scrollHeight - 400 || scrollHeight <= viewHeight + 100;
+        }
+        
+        function triggerLoad() {
+            const dash = window.dash_clientside;
+            if (!dash || !dash.set_props || !shouldLoadMore()) return;
+            window.__invoiceScrollPending = true;
+            window.__invoiceScrollCount += 1;
+            const hint = document.getElementById('load-more-hint');
+            const spinner = document.getElementById('load-more-spinner');
+            if (hint) hint.classList.add('loading');
+            if (spinner) spinner.classList.remove('hidden');
+            dash.set_props('scroll-trigger', {data: window.__invoiceScrollCount});
+        }
+        
+        // Initialize scroll listener once
         if (!window.__scrollListenerInitialized) {
             window.__invoiceScrollCount = 0;
             window.__invoiceScrollPending = false;
             
-            function triggerLoad() {
-                const dash = window.dash_clientside;
-                if (!dash || !dash.set_props) {
-                    return false;
-                }
-                
-                // Check if we have more data using stored state
-                const state = window.__invoiceState;
-                if (!state || !state.has_more) {
-                    window.__invoiceScrollPending = false;
-                    return false;
-                }
-                
-                if (window.__invoiceScrollPending) {
-                    return false;
-                }
-                
-                window.__invoiceScrollPending = true;
-                window.__invoiceScrollCount += 1;
-                
-                // Show loading indicator
-                const hint = document.getElementById('load-more-hint');
-                const spinner = document.getElementById('load-more-spinner');
-                if (hint) hint.classList.add('loading');
-                if (spinner) spinner.classList.remove('hidden');
-                
-                dash.set_props('scroll-trigger', {data: window.__invoiceScrollCount});
-                return true;
-            }
-            
-            function handleScroll() {
-                const state = window.__invoiceState;
-                if (!state || !state.has_more || window.__invoiceScrollPending) {
-                    return;
-                }
-                
-                const doc = document.documentElement || document.body;
-                const scrollTop = window.pageYOffset || doc.scrollTop || 0;
-                const innerHeight = window.innerHeight || doc.clientHeight || 0;
-                const scrollHeight = doc.scrollHeight || document.body.scrollHeight || 0;
-                
-                // More aggressive threshold (400px) and also check if content doesn't fill viewport
-                const threshold = 400;
-                const nearBottom = scrollTop + innerHeight >= scrollHeight - threshold;
-                const contentDoesntFillViewport = scrollHeight <= innerHeight + 100;
-                
-                if (nearBottom || contentDoesntFillViewport) {
-                    triggerLoad();
-                } else {
-                    window.__invoiceScrollPending = false;
-                }
-            }
-            
-            // Throttle scroll events (faster: 50ms)
             let scrollTimeout;
             window.addEventListener('scroll', function() {
-                if (scrollTimeout) {
-                    clearTimeout(scrollTimeout);
-                }
-                scrollTimeout = setTimeout(handleScroll, 50);
+                clearTimeout(scrollTimeout);
+                scrollTimeout = setTimeout(triggerLoad, 50);
             }, { passive: true });
             
+            window.addEventListener('load', () => setTimeout(triggerLoad, 300));
             window.__scrollListenerInitialized = true;
-            
-            // Also check on initial load after a short delay
-            // This handles the case where user reloads while scrolled to bottom
-            window.addEventListener('load', function() {
-                setTimeout(function() {
-                    const state = window.__invoiceState;
-                    if (!state || !state.has_more || window.__invoiceScrollPending) return;
-                    
-                    const doc = document.documentElement || document.body;
-                    const scrollTop = window.pageYOffset || doc.scrollTop || 0;
-                    const innerHeight = window.innerHeight || doc.clientHeight || 0;
-                    const scrollHeight = doc.scrollHeight || document.body.scrollHeight || 0;
-                    
-                    const threshold = 400;
-                    const nearBottom = scrollTop + innerHeight >= scrollHeight - threshold;
-                    const contentDoesntFillViewport = scrollHeight <= innerHeight + 100;
-                    
-                    if (nearBottom || contentDoesntFillViewport) {
-                        const dash = window.dash_clientside;
-                        if (dash && dash.set_props) {
-                            window.__invoiceScrollPending = true;
-                            window.__invoiceScrollCount += 1;
-                            
-                            const h = document.getElementById('load-more-hint');
-                            const s = document.getElementById('load-more-spinner');
-                            if (h) h.classList.add('loading');
-                            if (s) s.classList.remove('hidden');
-                            
-                            dash.set_props('scroll-trigger', {data: window.__invoiceScrollCount});
-                        }
-                    }
-                }, 300);
-            });
         }
         
-        // Reset pending flag when state changes (new data loaded)
+        // Reset and hide loading on state change
         window.__invoiceScrollPending = false;
-        
-        // Hide loading indicator when new data arrives
         const hint = document.getElementById('load-more-hint');
         const spinner = document.getElementById('load-more-spinner');
         if (hint) hint.classList.remove('loading');
         if (spinner) spinner.classList.add('hidden');
         
-        // Check if we need to load more immediately
-        // This handles: content doesn't fill viewport OR user is already scrolled to bottom
-        // Use requestAnimationFrame + setTimeout for reliable DOM measurement
-        requestAnimationFrame(function() {
-            setTimeout(function() {
-                const st = window.__invoiceState;
-                if (!st || !st.has_more || window.__invoiceScrollPending) return;
-                
-                const doc = document.documentElement || document.body;
-                const scrollTop = window.pageYOffset || doc.scrollTop || 0;
-                const innerHeight = window.innerHeight || doc.clientHeight || 0;
-                const scrollHeight = doc.scrollHeight || document.body.scrollHeight || 0;
-                
-                const threshold = 400;
-                const nearBottom = scrollTop + innerHeight >= scrollHeight - threshold;
-                const contentDoesntFillViewport = scrollHeight <= innerHeight + 100;
-                
-                // Trigger if near bottom OR content doesn't fill viewport
-                if (nearBottom || contentDoesntFillViewport) {
-                    const dash = window.dash_clientside;
-                    if (dash && dash.set_props) {
-                        window.__invoiceScrollPending = true;
-                        window.__invoiceScrollCount += 1;
-                        
-                        const h = document.getElementById('load-more-hint');
-                        const s = document.getElementById('load-more-spinner');
-                        if (h) h.classList.add('loading');
-                        if (s) s.classList.remove('hidden');
-                        
-                        dash.set_props('scroll-trigger', {data: window.__invoiceScrollCount});
-                    }
-                }
-            }, 200);
-        });
+        // Check if we need to load more immediately after DOM update
+        requestAnimationFrame(() => setTimeout(triggerLoad, 200));
         
         return window.dash_clientside.no_update;
     }

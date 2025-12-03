@@ -1,10 +1,10 @@
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass, field, replace
+from dataclasses import asdict, dataclass
 from datetime import datetime
 from typing import Any, List, Mapping, Sequence
 
-from invoice_ui.utils import parse_date
+from invoice_ui.utils import format_currency, parse_date
 
 """Dataclasses and helpers that describe invoice data made available to the UI."""
 
@@ -18,7 +18,7 @@ class Money:
 
     def format(self) -> str:
         """Return the monetary amount as a locale aware currency string."""
-        return f"{self.currency} {self.value:,.2f}"
+        return format_currency(self.value, self.currency)
 
 
 @dataclass(slots=True)
@@ -85,7 +85,7 @@ class Totals:
 
     def as_money(self, value: float) -> str:
         """Format the provided numeric value as currency."""
-        return f"{self.currency} {value:,.2f}"
+        return format_currency(value, self.currency)
 
 
 @dataclass(slots=True)
@@ -205,6 +205,3 @@ def deserialize_invoice(payload: Mapping[str, Any]) -> Invoice:
     )
 
 
-def clone_invoice(invoice: Invoice, **overrides: Any) -> Invoice:
-    """Return a shallow copy of an invoice with the provided overrides applied."""
-    return replace(invoice, **overrides)

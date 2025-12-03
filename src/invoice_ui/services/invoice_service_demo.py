@@ -27,31 +27,16 @@ class DemoInvoiceService(InvoiceService):
     ) -> InvoicePage:
         """Return a paginated slice of invoices that match the optional query."""
         filtered = self._apply_filter(query)
-        unlimited = query is None or not query.strip()
-        if not filtered:
-            return InvoicePage(items=[], total=0, page=page, page_size=page_size)
-
-        total = len(filtered)
-        page = max(page, 1)
-        page_size = max(page_size, 1)
+        unlimited = not query or not query.strip()
+        page, page_size = max(page, 1), max(page_size, 1)
         start = (page - 1) * page_size
-        end = start + page_size
 
-        if unlimited:
-            total = self._VIRTUAL_TOTAL
-            if start >= total:
-                return InvoicePage(
-                    items=[], total=total, page=page, page_size=page_size
-                )
-            end = min(end, total)
-            items = virtual_slice(filtered, start, end)
-        else:
-            if start >= total:
-                return InvoicePage(
-                    items=[], total=total, page=page, page_size=page_size
-                )
-            items = filtered[start:end]
+        total = self._VIRTUAL_TOTAL if unlimited else len(filtered)
+        if not filtered or start >= total:
+            return InvoicePage(items=[], total=total, page=page, page_size=page_size)
 
+        end = min(start + page_size, total)
+        items = virtual_slice(filtered, start, end) if unlimited else filtered[start:end]
         return InvoicePage(items=items, total=total, page=page, page_size=page_size)
 
     def _apply_filter(self, query: str | None) -> Sequence[Invoice]:
