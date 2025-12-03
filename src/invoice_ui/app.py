@@ -3,7 +3,7 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
-from dash import Dash, Input, Output, State, callback_context, dcc
+from dash import ALL, Dash, Input, Output, State, callback_context, dcc
 from dash.exceptions import PreventUpdate
 from reggie_core import logs
 from reggie_tools import clients, configs
@@ -200,112 +200,87 @@ app.clientside_callback(
 
 @app.callback(
     Output("download-file", "data"),
-    Input({"type": "download-button", "index": "ALL"}, "n_clicks"),
+    Input({"type": "download-button", "index": ALL}, "n_clicks"),
     State("invoice-state", "data"),
     prevent_initial_call=True,
 )
 def handle_download(n_clicks_list: list[int | None], state: dict | None) -> dict | None:
     """Handle PDF download when download button is clicked."""
-    LOG.info(
-        "handle_download called - n_clicks_list: %s, state: %s",
-        n_clicks_list,
-        bool(state),
-    )
+    import json
 
     ctx = callback_context
-    LOG.info("triggered: %s", ctx.triggered if ctx.triggered else "None")
-    LOG.info(
-        "triggered_id: %s", ctx.triggered_id if hasattr(ctx, "triggered_id") else "N/A"
-    )
 
-    if not state or not n_clicks_list:
-        LOG.warning("Missing state or n_clicks_list")
+    # Check if any button was actually clicked (not just initial render)
+    if not n_clicks_list or all(n is None or n == 0 for n in n_clicks_list):
         raise PreventUpdate
 
-    if not ctx.triggered:
-        LOG.warning("No triggers")
+    if not ctx.triggered or not state:
         raise PreventUpdate
 
-    # Find which button was clicked using triggered_id (pattern matching)
-    try:
-        # For pattern matching, triggered_id might be None, so check prop_id instead
-        prop_id = ctx.triggered[0]["prop_id"]
-        LOG.info("prop_id: %s", prop_id)
+    # Get the triggered button's ID from context
+    triggered_id = ctx.triggered_id
 
-        triggered_id = ctx.triggered_id
-        LOG.info("triggered_id: %s", triggered_id)
-
-        # Parse the prop_id to extract the ID dictionary
-        # Format: '{"type":"download-button","index":"invoice-123"}.n_clicks'
-        if prop_id and ".n_clicks" in prop_id:
-            import json
-
+    # triggered_id should be a dict like {"type": "download-button", "index": "invoice-123"}
+    if not triggered_id:
+        # Fallback: parse from prop_id
+        prop_id = ctx.triggered[0].get("prop_id", "")
+        if ".n_clicks" in prop_id:
             id_str = prop_id.replace(".n_clicks", "")
             try:
-                trigger_dict = json.loads(id_str)
-                invoice_id = trigger_dict.get("index", "")
-                LOG.info("Parsed invoice_id from prop_id: %s", invoice_id)
+                triggered_id = json.loads(id_str)
             except json.JSONDecodeError:
-                LOG.error("Failed to parse prop_id as JSON: %s", id_str)
+                LOG.error("Failed to parse prop_id: %s", prop_id)
                 raise PreventUpdate
-        elif triggered_id and isinstance(triggered_id, dict):
-            invoice_id = triggered_id.get("index", "")
-            LOG.info("Got invoice_id from triggered_id: %s", invoice_id)
-        else:
-            LOG.warning(
-                "Could not extract invoice_id - prop_id: %s, triggered_id: %s",
-                prop_id,
-                triggered_id,
-            )
-            raise PreventUpdate
 
-        if not invoice_id or not invoice_id.startswith("invoice-"):
-            LOG.warning("Invalid invoice ID: %s", invoice_id)
-            raise PreventUpdate
+    if not isinstance(triggered_id, dict):
+        LOG.error("triggered_id is not a dict: %s", triggered_id)
+        raise PreventUpdate
 
-        # Extract invoice number from ID
-        invoice_number = invoice_id.replace("invoice-", "")
-        LOG.info("Looking for invoice number: %s", invoice_number)
+    invoice_id = triggered_id.get("index", "")
+    if not invoice_id or not invoice_id.startswith("invoice-"):
+        LOG.warning("Invalid invoice ID: %s", invoice_id)
+        raise PreventUpdate
 
-        # Find the invoice in state
-        page = _state_to_page(state)
-        invoices = page.items
-        LOG.info("Total invoices in state: %d", len(invoices))
-        invoice = next(
-            (inv for inv in invoices if inv.invoice.invoice_number == invoice_number),
-            None,
-        )
+    # Extract invoice number from ID
+    invoice_number = invoice_id.replace("invoice-", "")
+    LOG.info("Download requested for invoice: %s", invoice_number)
 
-        if not invoice:
-            LOG.warning("Invoice not found for number: %s", invoice_number)
-            raise PreventUpdate
+    # Find the invoice in state
+    page = _state_to_page(state)
+    invoice = next(
+        (inv for inv in page.items if inv.invoice.invoice_number == invoice_number),
+        None,
+    )
 
-        if not invoice.path:
-            LOG.warning("Invoice found but path is empty: %s", invoice_number)
-            raise PreventUpdate
+    if not invoice:
+        LOG.warning("Invoice not found: %s", invoice_number)
+        raise PreventUpdate
 
-        LOG.info("Found invoice with path: %s", invoice.path)
+    if not invoice.path:
+        LOG.warning("Invoice has no path: %s", invoice_number)
+        raise PreventUpdate
 
+    LOG.info("Downloading from path: %s", invoice.path)
+
+    try:
         # Download file using workspace client
         workspace = clients.workspace_client()
         file_path = invoice.path
 
         # Convert DBFS path to workspace path format
-        # DBFS volumes like dbfs:/Volumes/... should be accessed as /Volumes/...
         workspace_path = file_path
         if file_path.startswith("dbfs:/"):
             workspace_path = file_path[5:]  # Remove "dbfs:" prefix
 
-        # Read file from workspace using workspace client
-        # The files API expects paths without dbfs: prefix for volumes
+        # Read file from workspace
         file_response = workspace.files.download(workspace_path)
-        file_content = file_response.as_bytes()
+        file_content = file_response.contents.read()
 
         # Extract filename from path
         filename = os.path.basename(file_path) if "/" in file_path else "invoice.pdf"
 
-        # Return file data for download
-        return dcc.send_bytes(file_content, file_name=filename)
+        LOG.info("Download successful: %s", filename)
+        return dcc.send_bytes(file_content, filename=filename)
 
     except Exception as e:
         LOG.error("Error downloading file: %s", e, exc_info=True)
