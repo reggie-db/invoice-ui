@@ -48,17 +48,21 @@ class InvoiceServiceImpl(InvoiceService):
 
         if query:
             q = query.strip().lower()
-            if q:
-                df = df.filter(F.lower(F.col("value").cast("string")).contains(q))
+            df = df.filter(F.lower(F.col("value").cast("string")).contains(q))
 
         total = df.count()
 
-        offset = (page - 1) * page_size
-
-        window = Window.orderBy(F.to_date(F.col("value.invoice.invoiceDate"), "M/d/y"))
+        window = Window.partitionBy(F.lit(1)).orderBy(
+            F.to_date(F.col("value.invoice.invoiceDate"), "M/d/y")
+        )
 
         df = df.withColumn("rn", F.row_number().over(window))
-        df = df.filter((F.col("rn") > offset) & (F.col("rn") <= offset + page_size))
+
+        offset = (page - 1) * page_size
+        start = offset + 1
+        end = offset + page_size
+
+        df = df.filter((F.col("rn") >= start) & (F.col("rn") <= end))
 
         rows = df.select("value", "path").collect()
 
@@ -73,11 +77,12 @@ class InvoiceServiceImpl(InvoiceService):
                 self._parse_invoice(benedict(value, keyattr_dynamic=True), row.path)
             )
 
-        invoice_page = InvoicePage(
-            items=items, total=total, page=page, page_size=page_size
+        return InvoicePage(
+            items=items,
+            total=total,
+            page=page,
+            page_size=page_size,
         )
-        LOG.info(f"Invoice page: {invoice_page}")
-        return invoice_page
 
     def _parse_invoice(self, b: benedict, path: str) -> Invoice:
         line_items = [

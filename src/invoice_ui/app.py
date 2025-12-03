@@ -341,16 +341,39 @@ app.clientside_callback(
             window.__invoiceScrollCount = 0;
             window.__invoiceScrollPending = false;
             
-            function handleScroll() {
+            function triggerLoad() {
                 const dash = window.dash_clientside;
                 if (!dash || !dash.set_props) {
-                    return;
+                    return false;
                 }
                 
                 // Check if we have more data using stored state
                 const state = window.__invoiceState;
                 if (!state || !state.has_more) {
                     window.__invoiceScrollPending = false;
+                    return false;
+                }
+                
+                if (window.__invoiceScrollPending) {
+                    return false;
+                }
+                
+                window.__invoiceScrollPending = true;
+                window.__invoiceScrollCount += 1;
+                
+                // Show loading indicator
+                const hint = document.getElementById('load-more-hint');
+                const spinner = document.getElementById('load-more-spinner');
+                if (hint) hint.classList.add('loading');
+                if (spinner) spinner.classList.remove('hidden');
+                
+                dash.set_props('scroll-trigger', {data: window.__invoiceScrollCount});
+                return true;
+            }
+            
+            function handleScroll() {
+                const state = window.__invoiceState;
+                if (!state || !state.has_more || window.__invoiceScrollPending) {
                     return;
                 }
                 
@@ -358,37 +381,62 @@ app.clientside_callback(
                 const scrollTop = window.pageYOffset || doc.scrollTop || 0;
                 const innerHeight = window.innerHeight || doc.clientHeight || 0;
                 const scrollHeight = doc.scrollHeight || document.body.scrollHeight || 0;
-                const threshold = 200;
-                const nearBottom = scrollTop + innerHeight >= scrollHeight - threshold;
                 
-                if (nearBottom) {
-                    if (!window.__invoiceScrollPending) {
-                        window.__invoiceScrollPending = true;
-                        window.__invoiceScrollCount += 1;
-                        
-                        // Show loading indicator
-                        const hint = document.getElementById('load-more-hint');
-                        const spinner = document.getElementById('load-more-spinner');
-                        if (hint) hint.classList.add('loading');
-                        if (spinner) spinner.classList.remove('hidden');
-                        
-                        dash.set_props('scroll-trigger', {data: window.__invoiceScrollCount});
-                    }
+                // More aggressive threshold (400px) and also check if content doesn't fill viewport
+                const threshold = 400;
+                const nearBottom = scrollTop + innerHeight >= scrollHeight - threshold;
+                const contentDoesntFillViewport = scrollHeight <= innerHeight + 100;
+                
+                if (nearBottom || contentDoesntFillViewport) {
+                    triggerLoad();
                 } else {
                     window.__invoiceScrollPending = false;
                 }
             }
             
-            // Throttle scroll events
+            // Throttle scroll events (faster: 50ms)
             let scrollTimeout;
             window.addEventListener('scroll', function() {
                 if (scrollTimeout) {
                     clearTimeout(scrollTimeout);
                 }
-                scrollTimeout = setTimeout(handleScroll, 100);
+                scrollTimeout = setTimeout(handleScroll, 50);
             }, { passive: true });
             
             window.__scrollListenerInitialized = true;
+            
+            // Also check on initial load after a short delay
+            // This handles the case where user reloads while scrolled to bottom
+            window.addEventListener('load', function() {
+                setTimeout(function() {
+                    const state = window.__invoiceState;
+                    if (!state || !state.has_more || window.__invoiceScrollPending) return;
+                    
+                    const doc = document.documentElement || document.body;
+                    const scrollTop = window.pageYOffset || doc.scrollTop || 0;
+                    const innerHeight = window.innerHeight || doc.clientHeight || 0;
+                    const scrollHeight = doc.scrollHeight || document.body.scrollHeight || 0;
+                    
+                    const threshold = 400;
+                    const nearBottom = scrollTop + innerHeight >= scrollHeight - threshold;
+                    const contentDoesntFillViewport = scrollHeight <= innerHeight + 100;
+                    
+                    if (nearBottom || contentDoesntFillViewport) {
+                        const dash = window.dash_clientside;
+                        if (dash && dash.set_props) {
+                            window.__invoiceScrollPending = true;
+                            window.__invoiceScrollCount += 1;
+                            
+                            const h = document.getElementById('load-more-hint');
+                            const s = document.getElementById('load-more-spinner');
+                            if (h) h.classList.add('loading');
+                            if (s) s.classList.remove('hidden');
+                            
+                            dash.set_props('scroll-trigger', {data: window.__invoiceScrollCount});
+                        }
+                    }
+                }, 300);
+            });
         }
         
         // Reset pending flag when state changes (new data loaded)
@@ -399,6 +447,41 @@ app.clientside_callback(
         const spinner = document.getElementById('load-more-spinner');
         if (hint) hint.classList.remove('loading');
         if (spinner) spinner.classList.add('hidden');
+        
+        // Check if we need to load more immediately
+        // This handles: content doesn't fill viewport OR user is already scrolled to bottom
+        // Use requestAnimationFrame + setTimeout for reliable DOM measurement
+        requestAnimationFrame(function() {
+            setTimeout(function() {
+                const st = window.__invoiceState;
+                if (!st || !st.has_more || window.__invoiceScrollPending) return;
+                
+                const doc = document.documentElement || document.body;
+                const scrollTop = window.pageYOffset || doc.scrollTop || 0;
+                const innerHeight = window.innerHeight || doc.clientHeight || 0;
+                const scrollHeight = doc.scrollHeight || document.body.scrollHeight || 0;
+                
+                const threshold = 400;
+                const nearBottom = scrollTop + innerHeight >= scrollHeight - threshold;
+                const contentDoesntFillViewport = scrollHeight <= innerHeight + 100;
+                
+                // Trigger if near bottom OR content doesn't fill viewport
+                if (nearBottom || contentDoesntFillViewport) {
+                    const dash = window.dash_clientside;
+                    if (dash && dash.set_props) {
+                        window.__invoiceScrollPending = true;
+                        window.__invoiceScrollCount += 1;
+                        
+                        const h = document.getElementById('load-more-hint');
+                        const s = document.getElementById('load-more-spinner');
+                        if (h) h.classList.add('loading');
+                        if (s) s.classList.remove('hidden');
+                        
+                        dash.set_props('scroll-trigger', {data: window.__invoiceScrollCount});
+                    }
+                }
+            }, 200);
+        });
         
         return window.dash_clientside.no_update;
     }
