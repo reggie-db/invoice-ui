@@ -1,8 +1,10 @@
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass, replace
+from dataclasses import asdict, dataclass, field, replace
 from datetime import datetime
 from typing import Any, List, Mapping, Sequence
+
+from invoice_ui.utils.invoice_helpers import parse_date
 
 """Dataclasses and helpers that describe invoice data made available to the UI."""
 
@@ -40,9 +42,9 @@ class InvoiceDetails:
 
     amount_due: Money
     invoice_number: str
-    invoice_date: str
+    invoice_date: datetime
     purchase_order_number: str
-    due_date: str | None
+    due_date: datetime | None
     sales_order_number: str
     terms: str
 
@@ -140,20 +142,37 @@ class InvoicePage:
         return self.page * self.page_size < self.total
 
 
-def _format_date(date_str: str) -> str:
-    """Format a date string stored in ISO format into a readable presentation."""
-    if not date_str:
+def _format_date(date: datetime | str | None) -> str:
+    """Format a datetime object or date string into a readable presentation."""
+    if not date:
         return "N/A"
-    try:
-        parsed = datetime.fromisoformat(date_str)
-        return parsed.strftime("%b %d, %Y")
-    except (ValueError, TypeError):
-        return "N/A"
+    
+    # Handle datetime objects
+    if isinstance(date, datetime):
+        return date.strftime("%b %d, %Y")
+    
+    # Handle string dates (fallback for backwards compatibility)
+    if isinstance(date, str):
+        try:
+            parsed = datetime.fromisoformat(date)
+            return parsed.strftime("%b %d, %Y")
+        except (ValueError, TypeError):
+            return "N/A"
+    
+    return "N/A"
 
 
 def serialize_invoice(invoice: Invoice) -> dict:
     """Convert an Invoice dataclass into a JSON serializable dictionary."""
-    return asdict(invoice)
+    data = asdict(invoice)
+    # Convert datetime objects to ISO format strings for JSON serialization
+    if "invoice" in data and "invoice_date" in data["invoice"]:
+        if isinstance(data["invoice"]["invoice_date"], datetime):
+            data["invoice"]["invoice_date"] = data["invoice"]["invoice_date"].isoformat()
+    if "invoice" in data and "due_date" in data["invoice"]:
+        if isinstance(data["invoice"]["due_date"], datetime):
+            data["invoice"]["due_date"] = data["invoice"]["due_date"].isoformat()
+    return data
 
 
 def deserialize_invoice(payload: Mapping[str, Any]) -> Invoice:
@@ -163,12 +182,22 @@ def deserialize_invoice(payload: Mapping[str, Any]) -> Invoice:
     buyer = Party(**payload["buyer"])
     seller = Party(**payload["seller"])
     totals = Totals(**payload["totals"])
+    
+    # Parse date strings to datetime objects
+    invoice_date_str = payload["invoice"]["invoice_date"]
+    invoice_date = parse_date(invoice_date_str) if invoice_date_str else None
+    if invoice_date is None:
+        raise ValueError(f"Invalid invoice_date: {invoice_date_str}")
+    
+    due_date_str = payload["invoice"].get("due_date")
+    due_date = parse_date(due_date_str) if due_date_str else None
+    
     invoice_details = InvoiceDetails(
         amount_due=Money(**payload["invoice"]["amount_due"]),
         invoice_number=payload["invoice"]["invoice_number"],
-        invoice_date=payload["invoice"]["invoice_date"],
+        invoice_date=invoice_date,
         purchase_order_number=payload["invoice"]["purchase_order_number"],
-        due_date=payload["invoice"]["due_date"],
+        due_date=due_date,
         sales_order_number=payload["invoice"]["sales_order_number"],
         terms=payload["invoice"]["terms"],
     )

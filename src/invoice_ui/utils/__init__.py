@@ -3,6 +3,7 @@
 from invoice_ui.utils.invoice_helpers import (
     format_currency,
     matches_query,
+    parse_date,
     virtual_invoice,
     virtual_slice,
 )
@@ -10,6 +11,7 @@ from invoice_ui.utils.invoice_helpers import (
 __all__ = [
     "format_currency",
     "matches_query",
+    "parse_date",
     "virtual_invoice",
     "virtual_slice",
 ]

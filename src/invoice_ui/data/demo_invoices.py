@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Sequence
 
 from invoice_ui.models.invoice import (
@@ -66,7 +67,7 @@ DEMO_INVOICES: Sequence[Invoice] = [
         invoice=InvoiceDetails(
             amount_due=Money(currency="USD", value=37550.34),
             invoice_number="B20277431",
-            invoice_date="2025-09-22",
+            invoice_date=datetime.fromisoformat("2025-09-22"),
             purchase_order_number="FRA1000791",
             due_date=None,
             sales_order_number="S61723476",
@@ -141,9 +142,9 @@ DEMO_INVOICES: Sequence[Invoice] = [
         invoice=InvoiceDetails(
             amount_due=Money(currency="USD", value=22474.8),
             invoice_number="B20277589",
-            invoice_date="2025-10-05",
+            invoice_date=datetime.fromisoformat("2025-10-05"),
             purchase_order_number="TFS2025-1842",
-            due_date="2025-12-04",
+            due_date=datetime.fromisoformat("2025-12-04"),
             sales_order_number="S61724012",
             terms="NET 60",
         ),
@@ -190,9 +191,9 @@ DEMO_INVOICES: Sequence[Invoice] = [
         invoice=InvoiceDetails(
             amount_due=Money(currency="USD", value=8776.95),
             invoice_number="B20278102",
-            invoice_date="2025-10-12",
+            invoice_date=datetime.fromisoformat("2025-10-12"),
             purchase_order_number="NDC-2025-Q4-089",
-            due_date="2025-11-11",
+            due_date=datetime.fromisoformat("2025-11-11"),
             sales_order_number="S61724568",
             terms="NET 30",
         ),
@@ -252,9 +253,9 @@ DEMO_INVOICES: Sequence[Invoice] = [
         invoice=InvoiceDetails(
             amount_due=Money(currency="USD", value=28245.36),
             invoice_number="B20278543",
-            invoice_date="2025-10-18",
+            invoice_date=datetime.fromisoformat("2025-10-18"),
             purchase_order_number="CSLA-OCT-2025-455",
-            due_date="2025-12-17",
+            due_date=datetime.fromisoformat("2025-12-17"),
             sales_order_number="S61725234",
             terms="NET 60",
         ),

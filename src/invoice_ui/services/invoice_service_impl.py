@@ -2,11 +2,12 @@ from __future__ import annotations
 
 import json
 import os
+from datetime import datetime
 from typing import Sequence
 
 from benedict import benedict
 from pyspark.sql import Window
-from pyspark.sql.functions import col, lower, row_number
+from pyspark.sql import functions as F
 from reggie_core import logs
 from reggie_tools import clients
 
@@ -21,7 +22,7 @@ from invoice_ui.models.invoice import (
     Totals,
 )
 from invoice_ui.services.invoice_service import InvoiceService
-from invoice_ui.utils.invoice_helpers import matches_query, virtual_slice
+from invoice_ui.utils.invoice_helpers import matches_query, parse_date, virtual_slice
 
 """Invoice service implementation that loads invoices from Spark table."""
 
@@ -102,13 +103,13 @@ class InvoiceServiceImpl(InvoiceService):
         if query:
             query = query.lower().strip()
             if query:
-                df = df.filter(lower(col("value").cast("string")).contains(query))
+                df = df.filter(F.lower(F.col("value").cast("string")).contains(query))
 
         # Apply pagination using Spark SQL window function
-        window = Window.orderBy(col("value"))
-        df_with_row = df.withColumn("row_num", row_number().over(window))
+        window = Window.orderBy(F.to_date(F.col("value.invoice.invoiceDate"), "M/d/y"))
+        df_with_row = df.withColumn("row_num", F.row_number().over(window))
         df_paginated = df_with_row.filter(
-            (col("row_num") > offset) & (col("row_num") <= offset + page_size)
+            (F.col("row_num") > offset) & (F.col("row_num") <= offset + page_size)
         ).select("value", "path")
 
         rows = df_paginated.collect()
@@ -190,9 +191,10 @@ class InvoiceServiceImpl(InvoiceService):
                     value=float(b.get("invoice.amountDue.value", 0)),
                 ),
                 invoice_number=b.get("invoice.invoiceNumber", ""),
-                invoice_date=b.get("invoice.invoiceDate", ""),
+                invoice_date=parse_date(b.get("invoice.invoiceDate", ""))
+                or datetime.now(),
                 purchase_order_number=b.get("invoice.purchaseOrderNumber", ""),
-                due_date=b.get("invoice.dueDate"),
+                due_date=parse_date(b.get("invoice.dueDate")),
                 sales_order_number=b.get("invoice.salesOrderNumber", ""),
                 terms=b.get("invoice.terms", ""),
             ),
