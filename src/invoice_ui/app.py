@@ -198,29 +198,34 @@ app.clientside_callback(
 )
 
 
-# Show spinner when download button is clicked
+# Show spinner and disable button when download is clicked
 app.clientside_callback(
     """
     function(n_clicks) {
         if (!n_clicks || n_clicks === 0) {
-            return window.dash_clientside.no_update;
+            return [window.dash_clientside.no_update, window.dash_clientside.no_update];
         }
-        // Return class without 'hidden' to show spinner
-        return "download-spinner";
+        // Show spinner and disable button
+        return ["download-spinner", true];
     }
     """,
-    Output({"type": "download-spinner", "index": MATCH}, "className"),
+    [
+        Output({"type": "download-spinner", "index": MATCH}, "className"),
+        Output({"type": "download-button", "index": MATCH}, "disabled"),
+    ],
     Input({"type": "download-button", "index": MATCH}, "n_clicks"),
     prevent_initial_call=True,
 )
 
-# Hide spinner when download completes
+# Hide spinner and re-enable buttons when download completes
 app.clientside_callback(
     """
     function(data) {
-        // Hide all spinners when download data is ready
+        // Hide all spinners and re-enable all buttons when download completes
         const spinners = document.querySelectorAll('.download-spinner');
         spinners.forEach(s => s.classList.add('hidden'));
+        const buttons = document.querySelectorAll('.download-button');
+        buttons.forEach(b => b.disabled = false);
         return window.dash_clientside.no_update;
     }
     """,
@@ -360,6 +365,13 @@ app.clientside_callback(
                     if (!window.__invoiceScrollPending) {
                         window.__invoiceScrollPending = true;
                         window.__invoiceScrollCount += 1;
+                        
+                        // Show loading indicator
+                        const hint = document.getElementById('load-more-hint');
+                        const spinner = document.getElementById('load-more-spinner');
+                        if (hint) hint.classList.add('loading');
+                        if (spinner) spinner.classList.remove('hidden');
+                        
                         dash.set_props('scroll-trigger', {data: window.__invoiceScrollCount});
                     }
                 } else {
@@ -381,6 +393,12 @@ app.clientside_callback(
         
         // Reset pending flag when state changes (new data loaded)
         window.__invoiceScrollPending = false;
+        
+        // Hide loading indicator when new data arrives
+        const hint = document.getElementById('load-more-hint');
+        const spinner = document.getElementById('load-more-spinner');
+        if (hint) hint.classList.remove('loading');
+        if (spinner) spinner.classList.add('hidden');
         
         return window.dash_clientside.no_update;
     }

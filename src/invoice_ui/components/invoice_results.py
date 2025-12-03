@@ -45,12 +45,28 @@ def build_invoice_results(
         ),
     ]
 
+    # Loading indicator for infinite scroll
     results_children.append(
         html.Div(
-            className="load-more-hint" + ("" if has_more else " end"),
-            children="Scroll to load more invoices"
-            if has_more
-            else "All invoices loaded",
+            id="load-more-container",
+            className="load-more-container",
+            children=[
+                html.Div(
+                    id="load-more-hint",
+                    className="load-more-hint" + ("" if has_more else " end"),
+                    children="Scroll to load more"
+                    if has_more
+                    else "All invoices loaded",
+                ),
+                html.Div(
+                    id="load-more-spinner",
+                    className="load-more-spinner hidden",
+                    children=[
+                        html.Span(className="spinner"),
+                        html.Span("Loading invoices...", className="loading-text"),
+                    ],
+                ),
+            ],
         )
     )
 
