@@ -4,7 +4,7 @@ from dataclasses import asdict, dataclass, field, replace
 from datetime import datetime
 from typing import Any, List, Mapping, Sequence
 
-from invoice_ui.utils.invoice_helpers import parse_date
+from invoice_ui.utils import parse_date
 
 """Dataclasses and helpers that describe invoice data made available to the UI."""
 
@@ -173,6 +173,30 @@ def serialize_invoice(invoice: Invoice) -> dict:
         if isinstance(data["invoice"]["due_date"], datetime):
             data["invoice"]["due_date"] = data["invoice"]["due_date"].isoformat()
     return data
+
+
+def serialize_page(page: InvoicePage, query: str = "", scroll_token: int = 0) -> dict:
+    """Serialize an InvoicePage to a JSON-compatible dictionary for dcc.Store."""
+    return {
+        "items": [serialize_invoice(inv) for inv in page.items],
+        "total": page.total,
+        "page": page.page,
+        "page_size": page.page_size,
+        "has_more": page.has_more,
+        "query": query,
+        "scroll_token": scroll_token,
+    }
+
+
+def deserialize_page(data: dict) -> InvoicePage:
+    """Deserialize a dictionary back into an InvoicePage."""
+    items = [deserialize_invoice(item) for item in data.get("items", [])]
+    return InvoicePage(
+        items=items,
+        total=data.get("total", 0),
+        page=data.get("page", 1),
+        page_size=data.get("page_size", 10),
+    )
 
 
 def deserialize_invoice(payload: Mapping[str, Any]) -> Invoice:

@@ -1,23 +1,20 @@
 from __future__ import annotations
 
-from typing import Sequence
-
 from dash import html
 from dash_iconify import DashIconify
 
 from invoice_ui.components.invoice_card import build_invoice_card
-from invoice_ui.models.invoice import Invoice
+from invoice_ui.models.invoice import InvoicePage
 
 """Helpers that render the invoice result list."""
 
 
 def build_invoice_results(
-    invoices: Sequence[Invoice],
-    query: str | None,
-    has_more: bool = False,
+    invoice_page: InvoicePage | None, query: str | None, has_more: bool = False
 ) -> html.Div:
     """Return either the empty state or the list of invoice cards."""
-    if not invoices:
+    invoices = invoice_page.items if invoice_page else []
+    if not invoice_page or not invoices:
         return html.Div(
             className="card empty-state",
             children=[
@@ -29,13 +26,12 @@ def build_invoice_results(
                 ),
             ],
         )
-
     results_children = [
         html.Div(
             className="results-summary",
             children=[
                 html.Span(
-                    _summary_text(len(invoices), query),
+                    _summary_text(invoice_page.total, query),
                     className="muted",
                 ),
             ],

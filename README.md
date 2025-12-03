@@ -1,4 +1,4 @@
-# Invoice Search UI
+  # Invoice Search UI
 
 Invoice Search UI is a Dash web application for browsing hardware invoices by invoice number, PO, customer, or item details. It features a card-based design, infinite scroll, and can source data from bundled demo invoices or a live Spark-backed service.
 
@@ -45,3 +45,4 @@ Any custom provider can plug in by subclassing `InvoiceService`, registering it 
 - **Components**: Reusable UI components for cards, search, and results (`invoice_ui.components`)
 - **Utils**: Shared utilities for formatting and filtering (`invoice_ui.utils`)
 - **Assets**: CSS and JavaScript files for styling and client-side behavior
+  

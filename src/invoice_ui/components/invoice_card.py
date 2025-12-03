@@ -6,7 +6,7 @@ from dash import html
 from dash_iconify import DashIconify
 
 from invoice_ui.models.invoice import Invoice, LineItem, Party, ShipTo
-from invoice_ui.utils.invoice_helpers import format_currency
+from invoice_ui.utils import format_currency
 
 """Reusable invoice card component."""
 

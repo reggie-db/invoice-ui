@@ -5,7 +5,7 @@ from typing import Sequence
 from invoice_ui.data.demo_invoices import DEMO_INVOICES
 from invoice_ui.models.invoice import Invoice, InvoicePage
 from invoice_ui.services.invoice_service import InvoiceService
-from invoice_ui.utils.invoice_helpers import matches_query, virtual_slice
+from invoice_ui.utils import matches_query, virtual_slice
 
 """Demo implementation of the InvoiceService that ships with static data."""
 
