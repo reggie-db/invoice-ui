@@ -59,13 +59,22 @@ def _build_header(invoice: Invoice, invoice_id: str) -> html.Div:
                     ),
                 ],
             ),
-            html.Button(
-                id={"type": "download-button", "index": invoice_id},
-                className="button primary ghost gap",
-                n_clicks=0,
+            html.Div(
+                className="download-wrapper",
                 children=[
-                    DashIconify(icon="lucide:download", className="button-icon"),
-                    "Download PDF",
+                    html.Button(
+                        id={"type": "download-button", "index": invoice_id},
+                        className="download-button",
+                        n_clicks=0,
+                        children=[
+                            DashIconify(icon="lucide:download", width=16),
+                            "Download",
+                        ],
+                    ),
+                    html.Span(
+                        id={"type": "download-spinner", "index": invoice_id},
+                        className="download-spinner hidden",
+                    ),
                 ],
             ),
         ],

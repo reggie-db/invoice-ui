@@ -3,7 +3,7 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
-from dash import ALL, Dash, Input, Output, State, callback_context, dcc
+from dash import ALL, MATCH, Dash, Input, Output, State, callback_context, dcc
 from dash.exceptions import PreventUpdate
 from reggie_core import logs
 from reggie_tools import clients, configs
@@ -194,6 +194,38 @@ app.clientside_callback(
     """,
     Output("url", "hash", allow_duplicate=True),
     Input("search-query", "value"),
+    prevent_initial_call=True,
+)
+
+
+# Show spinner when download button is clicked
+app.clientside_callback(
+    """
+    function(n_clicks) {
+        if (!n_clicks || n_clicks === 0) {
+            return window.dash_clientside.no_update;
+        }
+        // Return class without 'hidden' to show spinner
+        return "download-spinner";
+    }
+    """,
+    Output({"type": "download-spinner", "index": MATCH}, "className"),
+    Input({"type": "download-button", "index": MATCH}, "n_clicks"),
+    prevent_initial_call=True,
+)
+
+# Hide spinner when download completes
+app.clientside_callback(
+    """
+    function(data) {
+        // Hide all spinners when download data is ready
+        const spinners = document.querySelectorAll('.download-spinner');
+        spinners.forEach(s => s.classList.add('hidden'));
+        return window.dash_clientside.no_update;
+    }
+    """,
+    Output("download-file", "data", allow_duplicate=True),
+    Input("download-file", "data"),
     prevent_initial_call=True,
 )
 
