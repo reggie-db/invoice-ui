@@ -7,7 +7,7 @@ from reggie_core import logs, objects
 from reggie_tools import clients, configs
 
 from invoice_ui.components.invoice_results import build_invoice_results
-from invoice_ui.layout import build_grid_tab, build_layout, build_search_tab
+from invoice_ui.layout import build_layout
 from invoice_ui.models.invoice import (
     GenieStatus,
     deserialize_page,
@@ -31,10 +31,9 @@ app = Dash(
     title="Hardware Invoice Search",
     assets_folder=str(_assets_path),
     update_title=None,
-    suppress_callback_exceptions=True,  # Allow dynamic tab content
 )
 
-# Set custom index string with fonts and Vaadin React Grid bundle
+# Set custom index string with fonts
 app.index_string = """<!DOCTYPE html>
 <html>
     <head>
@@ -52,8 +51,6 @@ app.index_string = """<!DOCTYPE html>
             {%config%}
             {%scripts%}
             {%renderer%}
-            <!-- Vaadin React Grid bundle (loaded after Dash React) -->
-            <script src="/assets/vaadin_grid.min.js"></script>
         </footer>
     </body>
 </html>"""
@@ -65,82 +62,6 @@ _initial_page = _service.list_invoices(
     query=_initial_query or None, page=1, page_size=PAGE_SIZE
 )
 app.layout = build_layout(_initial_page, _initial_query)
-
-
-# Tab switching callback
-@app.callback(
-    Output("tab-content", "children"),
-    Input("app-tabs", "value"),
-)
-def render_tab_content(tab: str):
-    """Render content based on selected tab."""
-    if tab == "grid-tab":
-        return build_grid_tab()
-    # Default to search tab
-    return build_search_tab(_initial_page, _initial_query)
-
-
-# Generate dummy data for grid (server-side)
-def _generate_grid_data(count: int = 1000, start_id: int = 1) -> list[dict]:
-    """Generate dummy data for the grid demo."""
-    departments = ["Engineering", "Marketing", "Sales", "HR", "Finance", "Operations"]
-    statuses = ["Active", "On Leave", "Remote", "Contract"]
-    first_names = ["Alice", "Bob", "Carol", "David", "Eve", "Frank", "Grace", "Henry"]
-    last_names = [
-        "Johnson",
-        "Smith",
-        "White",
-        "Brown",
-        "Davis",
-        "Wilson",
-        "Taylor",
-        "Lee",
-    ]
-
-    data = []
-    for i in range(start_id, start_id + count):
-        first = first_names[i % len(first_names)]
-        last = last_names[(i * 7) % len(last_names)]
-        data.append(
-            {
-                "id": i,
-                "name": f"{first} {last}",
-                "email": f"{first.lower()}.{last.lower()}{i}@example.com",
-                "department": departments[i % len(departments)],
-                "status": statuses[i % len(statuses)],
-            }
-        )
-    return data
-
-
-@app.callback(
-    Output("vaadin-grid", "pageItems"),
-    Output("vaadin-grid", "totalCount"),
-    Input("vaadin-grid", "requestedPage"),
-    State("vaadin-grid", "requestedPageSize"),
-    prevent_initial_call=False,
-)
-def load_grid_page(
-    page: int | None,
-    page_size: int | None,
-) -> tuple[dict, int]:
-    """Load grid data page on demand (lazy loading via dataProvider)."""
-    import time
-
-    if page is None:
-        page = 0
-
-    size = page_size or 50
-    start = page * size
-    total = 1000
-
-    time.sleep(0.5)  # Simulate server delay
-    LOG.info(f"Loading grid page {page} (items {start + 1} to {start + size})")
-
-    # Generate items for this page
-    items = _generate_grid_data(size, start_id=start + 1)
-
-    return {"page": page, "items": items}, total
 
 
 @app.callback(
