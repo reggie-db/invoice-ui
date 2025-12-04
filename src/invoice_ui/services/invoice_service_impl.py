@@ -200,14 +200,10 @@ class InvoiceServiceImpl(InvoiceService):
                 ):
                     LOG.info("Genie response: %s", objects.to_json(response))
                     # Broadcast status update via WebSocket
-                    _broadcast_status(
-                        GenieStatusMessage(
-                            active=True,
-                            status=response.status_display,
-                            message=_extract_genie_message(response),
-                        )
-                    )
-                    for response_query in response.queries:
+                    genie_status_message = GenieStatusMessage.from_response(response)
+                    if genie_status_message.status or genie_status_message.message:
+                        _broadcast_status(genie_status_message)
+                    for response_query in response.queries():
                         try:
                             df = self._spark.sql(response_query)
                             if "content_hash" in df.columns:
@@ -228,15 +224,6 @@ class InvoiceServiceImpl(InvoiceService):
         ).value
         LOG.info("Content hashes: %s", content_hashes)
         return content_hashes
-
-
-def _extract_genie_message(response: genie.GenieResponse) -> str | None:
-    """Extract display message from a Genie response."""
-    if message := response.message:
-        content = message.content.strip() if message.content else None
-        if content:
-            return content
-    return None
 
 
 def _broadcast_status(status: GenieStatusMessage) -> None:

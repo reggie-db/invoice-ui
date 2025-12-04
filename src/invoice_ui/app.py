@@ -1,10 +1,10 @@
+import io
 import json
 import os
 from pathlib import Path
 
-from dash import ALL, Dash, Input, Output, State, callback_context
+from dash import ALL, Dash, Input, Output, State, callback_context, dcc
 from dash.exceptions import PreventUpdate
-from flask import Response, request, stream_with_context
 from reggie_core import logs
 from reggie_tools import clients, configs
 
@@ -30,7 +30,7 @@ LOG = logs.logger(__file__)
 
 # Configuration from environment
 PAGE_SIZE = 10
-APP_PORT = int(os.getenv("INVOICE_UI_PORT", "8000"))
+APP_PORT = int(os.getenv("DATABRICKS_APP_PORT", "8000"))
 USE_LIVE = os.getenv("INVOICE_UI_USE_LIVE", "true").lower() in {"1", "true", "yes"}
 USE_GENERIC_BRANDING = os.getenv("INVOICE_UI_GENERIC", "false").lower() in {
     "1",
@@ -105,51 +105,6 @@ app.index_string = f"""<!DOCTYPE html>
 # Initialize WebSocket on Flask server (same port as Dash app)
 init_websocket(app.server)
 LOG.info("WebSocket initialized on /ws/genie")
-
-
-# Flask route for direct file downloads (bypasses Dash callback timeout)
-@app.server.route("/api/download")
-def download_file():
-    """
-    Stream file download directly from DBFS.
-
-    Opens in new tab, streams file directly to browser.
-    """
-    file_path = request.args.get("path", "")
-    if not file_path:
-        return Response("Missing path parameter", status=400)
-
-    LOG.info("Download requested: %s", file_path)
-
-    try:
-        workspace = clients.workspace_client()
-
-        workspace_path = file_path
-        if file_path.startswith("dbfs:/"):
-            workspace_path = file_path[5:]
-
-        filename = os.path.basename(file_path) if "/" in file_path else "invoice.pdf"
-
-        def generate():
-            file_response = workspace.files.download(workspace_path)
-            while True:
-                chunk = file_response.contents.read(8192)
-                if not chunk:
-                    break
-                yield chunk
-
-        return Response(
-            stream_with_context(generate()),
-            mimetype="application/pdf",
-            headers={
-                "Content-Disposition": f'attachment; filename="{filename}"',
-                "Cache-Control": "no-cache",
-            },
-        )
-
-    except Exception as e:
-        LOG.error("Download error: %s", e, exc_info=True)
-        return Response(f"Download failed: {e}", status=500)
 
 
 # Check if AI search is available
@@ -432,22 +387,22 @@ else:
     )
 
 
-# Handle download button clicks - opens Flask route in new tab
+# Handle download button clicks - show spinner and trigger download
 app.clientside_callback(
     """
     function(n_clicks, state) {
-        if (!n_clicks || n_clicks === 0 || !state) {
-            return window.dash_clientside.no_update;
+        if (!n_clicks || n_clicks.every(n => !n) || !state) {
+            return [window.dash_clientside.no_update, window.dash_clientside.no_update];
         }
         
         const triggeredId = dash_clientside.callback_context.triggered_id;
         if (!triggeredId || !triggeredId.index) {
-            return window.dash_clientside.no_update;
+            return [window.dash_clientside.no_update, window.dash_clientside.no_update];
         }
         
         const invoiceId = triggeredId.index;
         if (!invoiceId.startsWith('invoice-')) {
-            return window.dash_clientside.no_update;
+            return [window.dash_clientside.no_update, window.dash_clientside.no_update];
         }
         
         const invoiceNumber = invoiceId.replace('invoice-', '');
@@ -458,18 +413,88 @@ app.clientside_callback(
         
         if (!invoice || !invoice.path) {
             console.error('Invoice or path not found');
-            return window.dash_clientside.no_update;
+            return [window.dash_clientside.no_update, window.dash_clientside.no_update];
         }
         
-        // Open download in new tab (Flask streams file directly)
-        window.open('/api/download?path=' + encodeURIComponent(invoice.path), '_blank');
+        // Show spinner on the clicked button
+        const button = document.querySelector(`button[id*='"index":"${invoiceId}"']`);
+        if (button) {
+            button.disabled = true;
+            button.classList.add('downloading');
+        }
         
+        // Store path for server callback and trigger download
+        return [invoice.path, Date.now()];
+    }
+    """,
+    [Output("download-path-store", "data"), Output("download-trigger", "data")],
+    Input({"type": "download-button", "index": ALL}, "n_clicks"),
+    State("invoice-state", "data"),
+    prevent_initial_call=True,
+)
+
+
+@app.callback(
+    Output("download-file", "data"),
+    Input("download-trigger", "data"),
+    State("download-path-store", "data"),
+    prevent_initial_call=True,
+)
+def handle_download(trigger: int | None, file_path: str | None) -> dict | None:
+    """Handle file download via dcc.Download."""
+    if not trigger or not file_path:
+        raise PreventUpdate
+
+    LOG.info("Download triggered for: %s", file_path)
+
+    try:
+        dbfs_prefix = "dbfs:"
+        clean_path = file_path
+        if clean_path.startswith(dbfs_prefix):
+            clean_path = clean_path[len(dbfs_prefix) :]
+
+        filename = os.path.basename(file_path) if "/" in file_path else "invoice.pdf"
+
+        # Try Spark first in Databricks App environment
+        try:
+            LOG.info("Using Spark for download")
+
+            def _generate(writer: io.BytesIO) -> None:
+                spark = clients.spark()
+                df = spark.read.format("binaryFile").load(file_path)
+                row = df.collect()[0]
+                writer.write(row.content)
+
+            return dcc.send_bytes(_generate, filename)
+        except Exception:
+            LOG.warning("Spark download failed", exc_info=True)
+
+        # Fall back to workspace client
+        LOG.info("Using workspace client for download")
+        workspace = clients.workspace_client()
+        file_response = workspace.files.download(clean_path)
+        content = file_response.contents.read()
+        return dcc.send_bytes(content, filename)
+
+    except Exception as e:
+        LOG.error("Download error: %s", e, exc_info=True)
+        raise PreventUpdate from e
+
+
+# Hide spinner after download completes
+app.clientside_callback(
+    """
+    function(data) {
+        // Re-enable all download buttons and remove spinner
+        document.querySelectorAll('.download-button.downloading').forEach(btn => {
+            btn.disabled = false;
+            btn.classList.remove('downloading');
+        });
         return window.dash_clientside.no_update;
     }
     """,
-    Output("download-file", "data"),
-    Input({"type": "download-button", "index": ALL}, "n_clicks"),
-    State("invoice-state", "data"),
+    Output("download-trigger", "data", allow_duplicate=True),
+    Input("download-file", "data"),
     prevent_initial_call=True,
 )
 

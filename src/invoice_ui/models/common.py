@@ -1,5 +1,7 @@
 from dataclasses import dataclass, field
 
+from reggie_tools import genie
+
 """
 Common state models for the Invoice UI application.
 
@@ -109,9 +111,9 @@ class GenieStatusMessage:
     This is sent via WebSocket, not stored in AppState.
     """
 
-    active: bool = False
-    status: str | None = None
-    message: str | None = None
+    active: bool = field(default=False)
+    status: str | None = field(default=None)
+    message: str | None = field(default=None)
 
     def to_dict(self) -> dict:
         """Serialize to JSON for WebSocket transmission."""
@@ -130,3 +132,24 @@ class GenieStatusMessage:
             status=data.get("status"),
             message=data.get("message"),
         )
+
+    @classmethod
+    def from_response(
+        cls, response: genie.GenieResponse | None
+    ) -> "GenieStatusMessage":
+        if response is None:
+            return cls()
+        return cls(
+            active=True,
+            status=response.status_display,
+            message=cls._extract_genie_message(response),
+        )
+
+    @staticmethod
+    def _extract_genie_message(response: genie.GenieResponse) -> str | None:
+        """Extract display message from a Genie response."""
+        if message := response.message:
+            content = message.content.strip() if message.content else None
+            if content:
+                return content
+        return None

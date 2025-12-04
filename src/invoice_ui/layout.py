@@ -47,6 +47,8 @@ def build_layout(
             dcc.Download(id="download-file"),
             dcc.Store(id="invoice-state", data=initial_state),
             dcc.Store(id="scroll-trigger", data=0),
+            dcc.Store(id="download-path-store", data=""),
+            dcc.Store(id="download-trigger", data=0),
             # WebSocket for real-time status updates
             dcc.Store(id="ws-url-store", data={"path": _WS_PATH}),
             WebSocket(id="genie-ws", url=""),
