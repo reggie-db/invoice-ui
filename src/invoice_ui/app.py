@@ -110,19 +110,14 @@ LOG.info("WebSocket initialized on /ws/genie")
 # Check if AI search is available
 AI_AVAILABLE = _service.ai_available
 
-# Initialize with query from URL fragment if present
-_initial_query = ""
-_initial_page = _service.list_invoices(
-    query=_initial_query or None, page=1, page_size=PAGE_SIZE
-)
-
-app.layout = build_layout(_initial_page, _initial_query, ai_available=AI_AVAILABLE)
+app.layout = build_layout(ai_available=AI_AVAILABLE)
 
 
 # Build callback inputs based on whether AI is available
 _search_inputs = [
     Input("search-query", "value"),
     Input("scroll-trigger", "data"),
+    Input("initial-load-trigger", "data"),
 ]
 _search_states = [State("invoice-state", "data")]
 
@@ -139,31 +134,34 @@ if AI_AVAILABLE:
 def update_invoice_state(
     query: str | None,
     scroll_counter: int | None,
+    initial_trigger: int | None,
     state_dict: dict | None,
     ai_toggle: list | None = None,
 ) -> dict:
-    """Handle both filter changes and scroll-based lazy loading."""
+    """Handle initial load, filter changes, and scroll-based lazy loading."""
     ctx = callback_context
     if not ctx.triggered:
         raise PreventUpdate
 
-    state = AppState.from_dict(state_dict)
     trigger = ctx.triggered[0]["prop_id"].split(".")[0]
 
     # Determine if AI search is enabled (default True if available)
     use_ai = AI_AVAILABLE and (ai_toggle is None or "enabled" in (ai_toggle or []))
 
-    if trigger == "search-query":
+    # Initial load or search query change: fetch first page
+    if trigger == "initial-load-trigger" or trigger == "search-query":
         query_text = (query or "").strip()
         page = _service.list_invoices(
             query=query_text or None,
             page=1,
-            page_size=state.page_size,
+            page_size=PAGE_SIZE,
             use_ai=use_ai,
         )
         return serialize_page(page, query_text, scroll_counter or 0)
 
+    # Scroll-triggered pagination
     if trigger == "scroll-trigger":
+        state = AppState.from_dict(state_dict)
         if not state.has_more:
             raise PreventUpdate
         if scroll_counter is None or scroll_counter == state.scroll_token:
@@ -562,9 +560,6 @@ app.clientside_callback(
 
 def main() -> None:
     """Entrypoint used by uv via `uv run invoice_ui`."""
-    if USE_LIVE:
-        configs.get()
-
     app.run(debug=True, host="0.0.0.0", port=APP_PORT, dev_tools_hot_reload=False)
 
 

@@ -7,6 +7,17 @@ from invoice_ui.models.invoice import InvoicePage
 """Helpers that render the invoice result list."""
 
 
+def build_loading_state() -> html.Div:
+    """Return a loading indicator for initial page load."""
+    return html.Div(
+        className="card loading-state",
+        children=[
+            html.Div(className="spinner"),
+            html.P("Loading invoices...", className="muted"),
+        ],
+    )
+
+
 def build_invoice_results(
     invoice_page: InvoicePage | None, query: str | None, has_more: bool = False
 ) -> html.Div:

@@ -1,3 +1,4 @@
+import functools
 import os
 from datetime import datetime
 
@@ -28,30 +29,73 @@ from invoice_ui.utils import parse_date
 LOG = logs.logger(__file__)
 
 
+def _parse_invoice(b: benedict, path: str) -> Invoice:
+    """Parse a benedict dictionary into an Invoice dataclass."""
+    line_items = [
+        LineItem(
+            description=li.get("description", ""),
+            serial_numbers=li.get("serialNumbers") or [],
+            line_number=li.get("lineNumber", ""),
+            quantity_shipped=li.get("quantityShipped") or 0,
+            manufacturer_part_number=li.get("manufacturerPartNumber", ""),
+            unit_price=float(li.get("unitPrice") or 0),
+            extended_price=float(li.get("extendedPrice") or 0),
+            quantity_ordered=li.get("quantityOrdered") or 0,
+        )
+        for li in b.get("lineItems", [])
+    ]
+
+    return Invoice(
+        line_items=line_items,
+        ship_to=ShipTo(
+            name=b.get("shipTo.name", ""),
+            attention=b.get("shipTo.attention", ""),
+            address=b.get("shipTo.address", []),
+        ),
+        invoice=InvoiceDetails(
+            amount_due=Money(
+                currency=b.get("invoice.amountDue.currency", "USD"),
+                value=float(b.get("invoice.amountDue.value", 0)),
+            ),
+            invoice_number=b.get("invoice.invoiceNumber", ""),
+            invoice_date=parse_date(b.get("invoice.invoiceDate", "")) or datetime.now(),
+            purchase_order_number=b.get("invoice.purchaseOrderNumber", ""),
+            due_date=parse_date(b.get("invoice.dueDate")),
+            sales_order_number=b.get("invoice.salesOrderNumber", ""),
+            terms=b.get("invoice.terms", ""),
+        ),
+        buyer=Party(
+            name=b.get("buyer.name", ""),
+            address=b.get("buyer.address", []),
+        ),
+        seller=Party(
+            name=b.get("seller.name", ""),
+            address=b.get("seller.address", []),
+        ),
+        totals=Totals(
+            currency=b.get("totals.currency", "USD"),
+            shipping=float(b.get("totals.shipping", 0)),
+            subtotal=float(b.get("totals.subtotal", 0)),
+            tax=float(b.get("totals.tax", 0)),
+            total=float(b.get("totals.total", 0)),
+        ),
+        path=path,
+    )
+
+
 class InvoiceServiceImpl(InvoiceService):
     """Invoice service implementation using Databricks Spark and Genie AI."""
 
     _DISK_CACHE = caches.DiskCache(paths.temp_dir() / "invoice_service_v2")
 
     def __init__(self) -> None:
-        self._spark = clients.spark()
         self.table_name = os.getenv("INVOICE_TABLE_NAME")
         assert self.table_name, "INVOICE_TABLE_NAME is not set"
-        genie_space_id = os.getenv("INVOICE_GENIE_SPACE_ID", None)
-        if genie_space_id:
-            wc = clients.workspace_client()
-            self._genie_service = genie.Service(wc, genie_space_id)
-            self._genie_conversation_id = self._genie_service.create_conversation(
-                "Answer questions about invoices"
-            ).conversation_id
-        else:
-            self._genie_service = None
-            self._genie_conversation_id = None
 
     @property
     def ai_available(self) -> bool:
         """Return True if AI-powered search is available."""
-        return self._genie_service is not None
+        return self._genie_space_id() is not None
 
     def list_invoices(
         self,
@@ -73,9 +117,9 @@ class InvoiceServiceImpl(InvoiceService):
         page_size = max(page_size, 1)
 
         df = self._apply_filter(
-            self._spark.read.table(self.table_name).select(
-                "content_hash", "value", "path"
-            ),
+            clients.spark()
+            .read.table(self.table_name)
+            .select("content_hash", "value", "path"),
             query,
             use_ai=use_ai,
         )
@@ -97,7 +141,7 @@ class InvoiceServiceImpl(InvoiceService):
         rows = df.select("value", "path").collect()
 
         items = [
-            self._parse_invoice(
+            _parse_invoice(
                 benedict(row.value.asDict(recursive=True), keyattr_dynamic=True),
                 row.path,
             )
@@ -109,60 +153,6 @@ class InvoiceServiceImpl(InvoiceService):
             total=total,
             page=page,
             page_size=page_size,
-        )
-
-    def _parse_invoice(self, b: benedict, path: str) -> Invoice:
-        """Parse a benedict dictionary into an Invoice dataclass."""
-        line_items = [
-            LineItem(
-                description=li.get("description", ""),
-                serial_numbers=li.get("serialNumbers") or [],
-                line_number=li.get("lineNumber", ""),
-                quantity_shipped=li.get("quantityShipped") or 0,
-                manufacturer_part_number=li.get("manufacturerPartNumber", ""),
-                unit_price=float(li.get("unitPrice") or 0),
-                extended_price=float(li.get("extendedPrice") or 0),
-                quantity_ordered=li.get("quantityOrdered") or 0,
-            )
-            for li in b.get("lineItems", [])
-        ]
-
-        return Invoice(
-            line_items=line_items,
-            ship_to=ShipTo(
-                name=b.get("shipTo.name", ""),
-                attention=b.get("shipTo.attention", ""),
-                address=b.get("shipTo.address", []),
-            ),
-            invoice=InvoiceDetails(
-                amount_due=Money(
-                    currency=b.get("invoice.amountDue.currency", "USD"),
-                    value=float(b.get("invoice.amountDue.value", 0)),
-                ),
-                invoice_number=b.get("invoice.invoiceNumber", ""),
-                invoice_date=parse_date(b.get("invoice.invoiceDate", ""))
-                or datetime.now(),
-                purchase_order_number=b.get("invoice.purchaseOrderNumber", ""),
-                due_date=parse_date(b.get("invoice.dueDate")),
-                sales_order_number=b.get("invoice.salesOrderNumber", ""),
-                terms=b.get("invoice.terms", ""),
-            ),
-            buyer=Party(
-                name=b.get("buyer.name", ""),
-                address=b.get("buyer.address", []),
-            ),
-            seller=Party(
-                name=b.get("seller.name", ""),
-                address=b.get("seller.address", []),
-            ),
-            totals=Totals(
-                currency=b.get("totals.currency", "USD"),
-                shipping=float(b.get("totals.shipping", 0)),
-                subtotal=float(b.get("totals.subtotal", 0)),
-                tax=float(b.get("totals.tax", 0)),
-                total=float(b.get("totals.total", 0)),
-            ),
-            path=path,
         )
 
     def _apply_filter(
@@ -188,16 +178,15 @@ class InvoiceServiceImpl(InvoiceService):
 
     def _filter_content_hash(self, query: str) -> list[str] | None:
         """Use Genie AI to get content hashes matching the query."""
-        if not self._genie_service:
+        if not self.ai_available:
             return None
 
-        cache_key = objects.hash([self._genie_conversation_id, query]).hexdigest()
+        cache_key = objects.hash([self._genie_context()[1], query]).hexdigest()
 
         def _load() -> list[str] | None:
             try:
-                for response in self._genie_service.chat(
-                    self._genie_conversation_id, query
-                ):
+                genie_service, conversation_id = self._genie_context()
+                for response in genie_service.chat(conversation_id, query):
                     LOG.info("Genie response: %s", objects.to_json(response))
                     # Broadcast status update via WebSocket
                     genie_status_message = GenieStatusMessage.from_response(response)
@@ -205,7 +194,7 @@ class InvoiceServiceImpl(InvoiceService):
                         _broadcast_status(genie_status_message)
                     for response_query in response.queries():
                         try:
-                            df = self._spark.sql(response_query)
+                            df = clients.spark().sql(response_query)
                             if "content_hash" in df.columns:
                                 content_hashes = [
                                     row.content_hash for row in df.collect()
@@ -224,6 +213,22 @@ class InvoiceServiceImpl(InvoiceService):
         ).value
         LOG.info("Content hashes: %s", content_hashes)
         return content_hashes
+
+    def _genie_space_id(self) -> str | None:
+        return os.getenv("INVOICE_GENIE_SPACE_ID", None) or None
+
+    @functools.cache
+    def _genie_context(self) -> tuple[genie.Service | None, str | None]:
+        genie_space_id = self._genie_space_id()
+        if genie_space_id:
+            wc = clients.workspace_client()
+            service = genie.Service(wc, genie_space_id)
+            conversation_id = service.create_conversation(
+                "Answer questions about invoices"
+            ).conversation_id
+            return service, conversation_id
+        else:
+            return None, None
 
 
 def _broadcast_status(status: GenieStatusMessage) -> None:

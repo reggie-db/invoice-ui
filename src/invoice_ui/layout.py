@@ -3,9 +3,8 @@ import os
 from dash import dcc, html
 from dash_extensions import WebSocket
 
-from invoice_ui.components.invoice_results import build_invoice_results
+from invoice_ui.components.invoice_results import build_loading_state
 from invoice_ui.components.invoice_search import build_search_panel
-from invoice_ui.models.invoice import InvoicePage, serialize_page
 
 """Layout helpers for the Dash app."""
 
@@ -25,30 +24,28 @@ _BRANDING = {
 _WS_PATH = "/ws/genie"
 
 
-def build_layout(
-    initial_page: InvoicePage,
-    initial_query: str = "",
-    ai_available: bool = False,
-) -> html.Div:
+def build_layout(ai_available: bool = False) -> html.Div:
     """
     Return the root layout for the app.
 
+    Renders immediately with a loading state. The first page of invoices
+    is loaded asynchronously via the search callback.
+
     Args:
-        initial_page: Initial page of invoices to display.
-        initial_query: Pre-populated search query.
         ai_available: Whether AI-powered search is available.
     """
-    initial_state = serialize_page(initial_page, initial_query, scroll_token=0)
-
     return html.Div(
         className="app-shell",
         children=[
             dcc.Location(id="url", refresh=False),
             dcc.Download(id="download-file"),
-            dcc.Store(id="invoice-state", data=initial_state),
+            # Start with empty state; first load triggered by callback
+            dcc.Store(id="invoice-state", data=None),
             dcc.Store(id="scroll-trigger", data=0),
             dcc.Store(id="download-path-store", data=""),
             dcc.Store(id="download-trigger", data=0),
+            # Trigger for initial load (set to 1 to fire callback on mount)
+            dcc.Store(id="initial-load-trigger", data=1),
             # WebSocket for real-time status updates
             dcc.Store(id="ws-url-store", data={"path": _WS_PATH}),
             WebSocket(id="genie-ws", url=""),
@@ -56,12 +53,10 @@ def build_layout(
                 className="app-container",
                 children=[
                     _build_page_header(),
-                    build_search_panel(initial_query, ai_available=ai_available),
+                    build_search_panel("", ai_available=ai_available),
                     html.Div(
                         id="results-container",
-                        children=build_invoice_results(
-                            initial_page, initial_query, initial_page.has_more
-                        ),
+                        children=build_loading_state(),
                     ),
                 ],
             ),

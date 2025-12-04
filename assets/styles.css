@@ -743,9 +743,24 @@ body {
   font-size: 1.05rem;
 }
 
-.empty-state {
+.empty-state,
+.loading-state {
   padding: 48px 24px;
   text-align: center;
+}
+
+.loading-state .spinner {
+  width: 40px;
+  height: 40px;
+  margin: 0 auto 14px;
+  border: 3px solid var(--border);
+  border-top-color: var(--primary);
+  border-radius: 50%;
+  animation: loading-spin 0.8s linear infinite;
+}
+
+@keyframes loading-spin {
+  to { transform: rotate(360deg); }
 }
 
 .empty-icon {
