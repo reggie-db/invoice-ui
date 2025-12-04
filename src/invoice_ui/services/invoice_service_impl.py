@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import os
 from datetime import datetime
 
@@ -8,10 +6,11 @@ from pyspark.sql import Window
 from pyspark.sql import functions as F
 from pyspark.sql.dataframe import DataFrame
 from reggie_concurio import caches
-from reggie_core import logs, paths
+from reggie_core import logs, objects, paths
 from reggie_tools import clients, genie
 
 from invoice_ui.models.invoice import (
+    GenieStatus,
     Invoice,
     InvoiceDetails,
     InvoicePage,
@@ -25,6 +24,10 @@ from invoice_ui.services.invoice_service import InvoiceService
 from invoice_ui.utils import parse_date
 
 LOG = logs.logger(__file__)
+
+
+# Global state: current GenieResponse or None
+_current_response: genie.GenieResponse | None = None
 
 
 class InvoiceServiceImpl(InvoiceService):
@@ -149,9 +152,10 @@ class InvoiceServiceImpl(InvoiceService):
 
     def _apply_filter(self, df: DataFrame, query: str | None) -> DataFrame:
         if query:
-            query = query.strip().lower()
+            query = " ".join(query.split())
         if not query:
             return df
+        print(f"Query: {query}")
         content_hashes = self._filter_content_hash(query)
         if content_hashes is not None:
             return df.filter(F.col("content_hash").isin(content_hashes))
@@ -162,22 +166,39 @@ class InvoiceServiceImpl(InvoiceService):
         if not self._genie_service:
             return None
 
+        global _current_response
+
+        cache_key = objects.hash([self._genie_conversation_id, query]).hexdigest()
+
         def _load():
-            respones = self._genie_service.chat(self._genie_conversation_id, query)
-            for response in respones:
-                LOG.info(f"Query response: {response}")
-                for response_query in response.queries:
-                    try:
-                        rows = self._spark.sql(response_query).collect()
-                        content_hashes = []
-                        for row in rows:
-                            content_hashes.append(row.content_hash)
-                        LOG.info(f"Query complete. Content hashes: {content_hashes}")
-                        return content_hashes
-                    except Exception:
-                        LOG.warning(f"Query error {query}", exc_info=True)
+            global _current_response
+            try:
+                for response in self._genie_service.chat(
+                    self._genie_conversation_id, query
+                ):
+                    LOG.info(f"Genie response: {objects.to_json(response)}")
+                    _current_response = response
+                return _current_response
+            finally:
+                _current_response = None
+
+        genie_response = self._DISK_CACHE.get_or_load(
+            cache_key, _load, expire=60 * 5
+        ).value
+
+        if not genie_response:
             return None
 
-        return self._DISK_CACHE.get_or_load(
-            self._genie_conversation_id + query, _load
-        ).value
+        for response_query in genie_response.queries:
+            try:
+                rows = self._spark.sql(response_query).collect()
+                return [row.content_hash for row in rows]
+            except Exception:
+                LOG.warning(f"Query error {response_query}", exc_info=True)
+        return None
+
+    @staticmethod
+    def get_genie_status() -> GenieStatus:
+        """Return the current Genie query status for the UI."""
+        global _current_response
+        return GenieStatus(_current_response)

@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from dash import dcc, html
 from dash_iconify import DashIconify
 
@@ -24,7 +22,25 @@ def build_search_panel(initial_value: str = "") -> html.Div:
                         debounce=True,
                     ),
                 ],
-            )
+            ),
+            # Genie status indicator
+            html.Div(
+                id="genie-status",
+                className="genie-status hidden",
+                children=[
+                    html.Div(className="genie-spinner"),
+                    html.Div(
+                        className="genie-status-content",
+                        children=[
+                            html.Span(id="genie-status-text", className="genie-status-text"),
+                            html.Span(id="genie-status-message", className="genie-status-message"),
+                        ],
+                    ),
+                ],
+            ),
+            # Interval for polling genie status
+            dcc.Interval(id="genie-status-interval", interval=500, disabled=True),
+            dcc.Store(id="genie-status-store", data={"active": False}),
         ],
     )
 

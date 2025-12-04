@@ -68,6 +68,79 @@ body {
   font-size: 1rem;
 }
 
+/* Tabs styling */
+.app-tabs {
+  margin-bottom: 20px;
+  border-bottom: 1px solid var(--border);
+}
+
+.app-tabs .tab-container {
+  display: flex;
+  gap: 4px;
+}
+
+.app-tab {
+  padding: 12px 20px;
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  font-weight: 500;
+  font-size: 0.95rem;
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  transition: all 150ms ease;
+}
+
+.app-tab:hover {
+  color: var(--text);
+  background: var(--panel-muted);
+}
+
+.app-tab--selected {
+  color: var(--primary);
+  border-bottom-color: var(--primary);
+  background: transparent;
+}
+
+.app-tab--selected:hover {
+  background: transparent;
+}
+
+/* Grid tab content */
+.grid-tab-content {
+  margin-top: 8px;
+}
+
+.grid-title {
+  margin: 0 0 8px;
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.vaadin-grid-wrapper {
+  margin-top: 16px;
+  min-height: 400px;
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+}
+
+.vaadin-grid-wrapper vaadin-grid {
+  width: 100%;
+  height: 400px;
+  font-family: inherit;
+  --lumo-base-color: var(--panel);
+  --lumo-body-text-color: var(--text);
+  --lumo-secondary-text-color: var(--muted);
+  --lumo-primary-color: var(--primary);
+  --lumo-primary-text-color: var(--primary);
+  --lumo-contrast-10pct: var(--border);
+  --lumo-contrast-20pct: var(--border-strong);
+  --lumo-font-family: inherit;
+  --lumo-font-size-s: 0.875rem;
+  --lumo-font-size-m: 0.95rem;
+}
+
 .card {
   background: var(--panel);
   border-radius: var(--radius-lg);
@@ -113,6 +186,66 @@ body {
   background: #fff;
 }
 
+/* Genie AI Status Indicator */
+.genie-status {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 16px;
+  padding: 14px 18px;
+  background: linear-gradient(135deg, #fff5f5 0%, #fff 100%);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  animation: genie-fade-in 0.3s ease;
+}
+
+.genie-status.hidden {
+  display: none;
+}
+
+@keyframes genie-fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.genie-spinner {
+  width: 20px;
+  height: 20px;
+  border: 2px solid var(--border);
+  border-top-color: var(--primary);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+  flex-shrink: 0;
+}
+
+.genie-status-content {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.genie-status-text {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--primary);
+}
+
+.genie-status-message {
+  font-size: 0.8rem;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .results-summary {
   color: var(--muted);
   font-size: 0.95rem;
@@ -122,6 +255,37 @@ body {
   display: flex;
   flex-direction: column;
   gap: 18px;
+}
+
+/* Search loading state */
+.results-loading {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 200px;
+}
+
+.loading-placeholder {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  padding: 48px;
+  color: var(--muted);
+}
+
+.loading-spinner-large {
+  width: 32px;
+  height: 32px;
+  border: 3px solid var(--border);
+  border-top-color: var(--primary);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+.loading-placeholder .loading-text {
+  font-size: 1rem;
+  font-weight: 500;
 }
 
 .stack {

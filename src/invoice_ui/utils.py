@@ -1,7 +1,5 @@
 """Helper functions for invoice processing and formatting."""
 
-from __future__ import annotations
-
 from dataclasses import replace
 from datetime import datetime
 from typing import TYPE_CHECKING, Sequence

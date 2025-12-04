@@ -1,16 +1,15 @@
-from __future__ import annotations
-
 import os
 from pathlib import Path
 
 from dash import ALL, MATCH, Dash, Input, Output, State, callback_context, dcc
 from dash.exceptions import PreventUpdate
-from reggie_core import logs
+from reggie_core import logs, objects
 from reggie_tools import clients, configs
 
 from invoice_ui.components.invoice_results import build_invoice_results
-from invoice_ui.layout import build_layout
+from invoice_ui.layout import build_grid_tab, build_layout, build_search_tab
 from invoice_ui.models.invoice import (
+    GenieStatus,
     deserialize_page,
     serialize_invoice,
     serialize_page,
@@ -32,9 +31,10 @@ app = Dash(
     title="Hardware Invoice Search",
     assets_folder=str(_assets_path),
     update_title=None,
+    suppress_callback_exceptions=True,  # Allow dynamic tab content
 )
 
-# Set custom index string to include favicon and Source Sans 3 font (Proxima Nova alternative)
+# Set custom index string with fonts and Vaadin React Grid bundle
 app.index_string = """<!DOCTYPE html>
 <html>
     <head>
@@ -52,6 +52,8 @@ app.index_string = """<!DOCTYPE html>
             {%config%}
             {%scripts%}
             {%renderer%}
+            <!-- Vaadin React Grid bundle (loaded after Dash React) -->
+            <script src="/assets/vaadin_grid.min.js"></script>
         </footer>
     </body>
 </html>"""
@@ -63,6 +65,82 @@ _initial_page = _service.list_invoices(
     query=_initial_query or None, page=1, page_size=PAGE_SIZE
 )
 app.layout = build_layout(_initial_page, _initial_query)
+
+
+# Tab switching callback
+@app.callback(
+    Output("tab-content", "children"),
+    Input("app-tabs", "value"),
+)
+def render_tab_content(tab: str):
+    """Render content based on selected tab."""
+    if tab == "grid-tab":
+        return build_grid_tab()
+    # Default to search tab
+    return build_search_tab(_initial_page, _initial_query)
+
+
+# Generate dummy data for grid (server-side)
+def _generate_grid_data(count: int = 1000, start_id: int = 1) -> list[dict]:
+    """Generate dummy data for the grid demo."""
+    departments = ["Engineering", "Marketing", "Sales", "HR", "Finance", "Operations"]
+    statuses = ["Active", "On Leave", "Remote", "Contract"]
+    first_names = ["Alice", "Bob", "Carol", "David", "Eve", "Frank", "Grace", "Henry"]
+    last_names = [
+        "Johnson",
+        "Smith",
+        "White",
+        "Brown",
+        "Davis",
+        "Wilson",
+        "Taylor",
+        "Lee",
+    ]
+
+    data = []
+    for i in range(start_id, start_id + count):
+        first = first_names[i % len(first_names)]
+        last = last_names[(i * 7) % len(last_names)]
+        data.append(
+            {
+                "id": i,
+                "name": f"{first} {last}",
+                "email": f"{first.lower()}.{last.lower()}{i}@example.com",
+                "department": departments[i % len(departments)],
+                "status": statuses[i % len(statuses)],
+            }
+        )
+    return data
+
+
+@app.callback(
+    Output("vaadin-grid", "pageItems"),
+    Output("vaadin-grid", "totalCount"),
+    Input("vaadin-grid", "requestedPage"),
+    State("vaadin-grid", "requestedPageSize"),
+    prevent_initial_call=False,
+)
+def load_grid_page(
+    page: int | None,
+    page_size: int | None,
+) -> tuple[dict, int]:
+    """Load grid data page on demand (lazy loading via dataProvider)."""
+    import time
+
+    if page is None:
+        page = 0
+
+    size = page_size or 50
+    start = page * size
+    total = 1000
+
+    time.sleep(0.5)  # Simulate server delay
+    LOG.info(f"Loading grid page {page} (items {start + 1} to {start + size})")
+
+    # Generate items for this page
+    items = _generate_grid_data(size, start_id=start + 1)
+
+    return {"page": page, "items": items}, total
 
 
 @app.callback(
@@ -131,6 +209,125 @@ def render_results(state: dict) -> object:
         raise PreventUpdate
     return build_invoice_results(
         deserialize_page(state), state.get("query", ""), state.get("has_more", False)
+    )
+
+
+# Clear results immediately when search starts (before server responds)
+app.clientside_callback(
+    """
+    function(query, currentChildren) {
+        // Only clear on actual search changes, not initial load
+        if (query === undefined || query === null) {
+            return window.dash_clientside.no_update;
+        }
+        // Return a loading placeholder
+        return {
+            props: {
+                className: 'results-loading',
+                children: {
+                    props: {
+                        className: 'loading-placeholder',
+                        children: [
+                            {
+                                type: 'Div',
+                                namespace: 'dash_html_components',
+                                props: {
+                                    className: 'loading-spinner-large'
+                                }
+                            },
+                            {
+                                type: 'Span',
+                                namespace: 'dash_html_components',
+                                props: {
+                                    children: 'Searching...',
+                                    className: 'loading-text'
+                                }
+                            }
+                        ]
+                    },
+                    type: 'Div',
+                    namespace: 'dash_html_components'
+                }
+            },
+            type: 'Div',
+            namespace: 'dash_html_components'
+        };
+    }
+    """,
+    Output("results-container", "children", allow_duplicate=True),
+    Input("search-query", "value"),
+    State("results-container", "children"),
+    prevent_initial_call=True,
+)
+
+
+# Check if genie is configured
+_GENIE_ENABLED = bool(os.getenv("INVOICE_GENIE_SPACE_ID", ""))
+
+
+# Enable genie status polling when search starts
+@app.callback(
+    Output("genie-status-interval", "disabled"),
+    Input("search-query", "value"),
+    Input("genie-status-store", "data"),
+    State("genie-status-interval", "disabled"),
+    prevent_initial_call=True,
+)
+def toggle_genie_polling(
+    query: str | None, status: dict, currently_disabled: bool
+) -> bool:
+    """Enable polling when search starts, disable when genie is not active."""
+    if not _GENIE_ENABLED:
+        return True
+    ctx = callback_context
+    if not ctx.triggered:
+        raise PreventUpdate
+    trigger = ctx.triggered[0]["prop_id"].split(".")[0]
+    # Enable polling when search changes (with actual query text)
+    if trigger == "search-query" and query and query.strip():
+        return False
+    # Only disable when genie becomes inactive
+    if trigger == "genie-status-store":
+        if not status.get("active", False):
+            return True
+        # Keep polling while active
+        return False
+    raise PreventUpdate
+
+
+# Poll for genie status
+@app.callback(
+    Output("genie-status-store", "data"),
+    Input("genie-status-interval", "n_intervals"),
+    prevent_initial_call=True,
+)
+def poll_genie_status(n_intervals: int) -> dict:
+    """Poll the service for current genie status."""
+    if not _GENIE_ENABLED:
+        genie_status = GenieStatus(None)
+    else:
+        from invoice_ui.services.invoice_service_impl import InvoiceServiceImpl
+
+        genie_status = InvoiceServiceImpl.get_genie_status()
+    return objects.dump(genie_status)
+
+
+# Update genie status display
+@app.callback(
+    Output("genie-status", "className"),
+    Output("genie-status-text", "children"),
+    Output("genie-status-message", "children"),
+    Input("genie-status-store", "data"),
+    prevent_initial_call=True,
+)
+def update_genie_display(status: dict) -> tuple[str, str, str]:
+    """Update the genie status UI based on current status."""
+    if not status.get("active", False):
+        return "genie-status hidden", "", ""
+    return (
+        "genie-status",
+        status.get("status", "Processing..."),
+        status.get("message", ""),
     )
 
 

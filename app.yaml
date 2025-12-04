@@ -3,3 +3,5 @@ command: ["/bin/bash", "run.sh"]
 env:
   - name: "INVOICE_TABLE_NAME"
     value: ""
+  - name: "INVOICE_GENIE_SPACE_ID"
+    value: ""

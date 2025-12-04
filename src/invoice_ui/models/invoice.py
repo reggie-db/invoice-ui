@@ -1,8 +1,8 @@
-from __future__ import annotations
-
 from dataclasses import asdict, dataclass
 from datetime import datetime
 from typing import Any, List, Mapping, Sequence
+
+from reggie_tools import genie
 
 from invoice_ui.utils import format_currency, parse_date
 
@@ -205,3 +205,26 @@ def deserialize_invoice(payload: Mapping[str, Any]) -> Invoice:
     )
 
 
+@dataclass
+class GenieStatus:
+    active: bool
+    status: str | None
+    message: str | None
+
+    def __init__(self, genie_response: genie.GenieResponse | None):
+        if genie_response is None:
+            self.active = False
+            self.status = None
+            self.message = None
+        else:
+            self.active = True
+            self.status = genie_response.status_display
+            self.message = GenieStatus._message(genie_response)
+
+    @staticmethod
+    def _message(genie_response: genie.GenieResponse):
+        if message := genie_response.message:
+            content = message.content.strip() if message.content else None
+            if content:
+                return content
+        return None

@@ -41,3 +41,10 @@ coverage.xml
 # Notebook checkpoints
 .ipynb_checkpoints/
 .databricks/
+
+# Node.js (for Vaadin grid component build)
+node_modules/
+package-lock.json
+
+# Webpack build output
+src/invoice_ui/components/vaadin_grid/vaadin_grid/*.js
