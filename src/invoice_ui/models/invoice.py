@@ -2,8 +2,7 @@ from dataclasses import asdict, dataclass
 from datetime import datetime
 from typing import Any, List, Mapping, Sequence
 
-from reggie_tools import genie
-
+from invoice_ui.models.common import AppState
 from invoice_ui.utils import format_currency, parse_date
 
 """Dataclasses and helpers that describe invoice data made available to the UI."""
@@ -135,10 +134,8 @@ class InvoicePage:
     @property
     def has_more(self) -> bool:
         """Return True when additional pages are available."""
-        # If we got fewer items than requested, we've reached the end
         if len(self.items) < self.page_size:
             return False
-        # Otherwise check if there are more pages based on total
         return self.page * self.page_size < self.total
 
 
@@ -152,7 +149,6 @@ def _format_date(date: datetime | None) -> str:
 def serialize_invoice(invoice: Invoice) -> dict:
     """Convert an Invoice dataclass into a JSON serializable dictionary."""
     data = asdict(invoice)
-    # Convert datetime objects to ISO format strings for JSON serialization
     data["invoice"]["invoice_date"] = invoice.invoice.invoice_date.isoformat()
     if invoice.invoice.due_date:
         data["invoice"]["due_date"] = invoice.invoice.due_date.isoformat()
@@ -163,9 +159,9 @@ def serialize_page(page: InvoicePage, query: str = "", scroll_token: int = 0) ->
     """Serialize an InvoicePage to a JSON-compatible dictionary for dcc.Store."""
     return {
         "items": [serialize_invoice(inv) for inv in page.items],
-        "total": page.total,
         "page": page.page,
         "page_size": page.page_size,
+        "total": page.total,
         "has_more": page.has_more,
         "query": query,
         "scroll_token": scroll_token,
@@ -174,12 +170,12 @@ def serialize_page(page: InvoicePage, query: str = "", scroll_token: int = 0) ->
 
 def deserialize_page(data: dict) -> InvoicePage:
     """Deserialize a dictionary back into an InvoicePage."""
-    items = [deserialize_invoice(item) for item in data.get("items", [])]
+    state = AppState.from_dict(data)
     return InvoicePage(
-        items=items,
-        total=data.get("total", 0),
-        page=data.get("page", 1),
-        page_size=data.get("page_size", 10),
+        items=[deserialize_invoice(item) for item in state.items],
+        total=state.total,
+        page=state.page,
+        page_size=state.page_size,
     )
 
 
@@ -203,28 +199,3 @@ def deserialize_invoice(payload: Mapping[str, Any]) -> Invoice:
         ),
         path=payload.get("path", ""),
     )
-
-
-@dataclass
-class GenieStatus:
-    active: bool
-    status: str | None
-    message: str | None
-
-    def __init__(self, genie_response: genie.GenieResponse | None):
-        if genie_response is None:
-            self.active = False
-            self.status = None
-            self.message = None
-        else:
-            self.active = True
-            self.status = genie_response.status_display
-            self.message = GenieStatus._message(genie_response)
-
-    @staticmethod
-    def _message(genie_response: genie.GenieResponse):
-        if message := genie_response.message:
-            content = message.content.strip() if message.content else None
-            if content:
-                return content
-        return None

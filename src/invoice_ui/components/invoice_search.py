@@ -5,7 +5,12 @@ from dash_iconify import DashIconify
 
 
 def build_search_panel(initial_value: str = "") -> html.Div:
-    """Return the search container with the query input."""
+    """
+    Return the search container with the query input.
+
+    Args:
+        initial_value: Pre-populated search query.
+    """
     return html.Div(
         className="card search-card",
         children=[
@@ -23,7 +28,7 @@ def build_search_panel(initial_value: str = "") -> html.Div:
                     ),
                 ],
             ),
-            # Genie status indicator
+            # Status indicator (updated via WebSocket)
             html.Div(
                 id="genie-status",
                 className="genie-status hidden",
@@ -32,15 +37,16 @@ def build_search_panel(initial_value: str = "") -> html.Div:
                     html.Div(
                         className="genie-status-content",
                         children=[
-                            html.Span(id="genie-status-text", className="genie-status-text"),
-                            html.Span(id="genie-status-message", className="genie-status-message"),
+                            html.Span(
+                                id="genie-status-text", className="genie-status-text"
+                            ),
+                            html.Span(
+                                id="genie-status-message",
+                                className="genie-status-message",
+                            ),
                         ],
                     ),
                 ],
             ),
-            # Interval for polling genie status
-            dcc.Interval(id="genie-status-interval", interval=500, disabled=True),
-            dcc.Store(id="genie-status-store", data={"active": False}),
         ],
     )
-
