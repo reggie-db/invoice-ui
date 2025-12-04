@@ -25,13 +25,18 @@ _BRANDING = {
 _WS_PATH = "/ws/genie"
 
 
-def build_layout(initial_page: InvoicePage, initial_query: str = "") -> html.Div:
+def build_layout(
+    initial_page: InvoicePage,
+    initial_query: str = "",
+    ai_available: bool = False,
+) -> html.Div:
     """
     Return the root layout for the app.
 
     Args:
         initial_page: Initial page of invoices to display.
         initial_query: Pre-populated search query.
+        ai_available: Whether AI-powered search is available.
     """
     initial_state = serialize_page(initial_page, initial_query, scroll_token=0)
 
@@ -49,7 +54,7 @@ def build_layout(initial_page: InvoicePage, initial_query: str = "") -> html.Div
                 className="app-container",
                 children=[
                     _build_page_header(),
-                    build_search_panel(initial_query),
+                    build_search_panel(initial_query, ai_available=ai_available),
                     html.Div(
                         id="results-container",
                         children=build_invoice_results(

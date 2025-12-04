@@ -19,14 +19,20 @@ class DemoInvoiceService(InvoiceService):
         """Initialize the service with the provided invoices or the default set."""
         self._invoices: Sequence[Invoice] = invoices or DEMO_INVOICES
 
+    @property
+    def ai_available(self) -> bool:
+        """Return True if AI-powered search is available (always False for demo)."""
+        return False
+
     def list_invoices(
         self,
         query: str | None = None,
         page: int = 1,
         page_size: int = 10,
+        use_ai: bool = True,
     ) -> InvoicePage:
         """Return a paginated slice of invoices that match the optional query."""
-        # Broadcast demo status via WebSocket
+        # Broadcast demo status via WebSocket (only if searching)
         if query and query.strip():
             _broadcast_demo_status(query)
 
@@ -40,7 +46,9 @@ class DemoInvoiceService(InvoiceService):
             return InvoicePage(items=[], total=total, page=page, page_size=page_size)
 
         end = min(start + page_size, total)
-        items = virtual_slice(filtered, start, end) if unlimited else filtered[start:end]
+        items = (
+            virtual_slice(filtered, start, end) if unlimited else filtered[start:end]
+        )
         return InvoicePage(items=items, total=total, page=page, page_size=page_size)
 
     def _apply_filter(self, query: str | None) -> Sequence[Invoice]:

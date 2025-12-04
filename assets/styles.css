@@ -202,6 +202,75 @@ body {
   background: #fff;
 }
 
+/* AI Search toggle button (inline with search) */
+.ai-toggle-wrapper {
+  position: absolute;
+  top: 50%;
+  right: 14px;
+  transform: translateY(-50%);
+  display: flex;
+  align-items: center;
+}
+
+.ai-toggle-checklist {
+  display: flex;
+}
+
+.ai-toggle-checklist label {
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+}
+
+/* Hide the actual checkbox */
+.ai-toggle-checklist input[type="checkbox"] {
+  position: absolute;
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.ai-toggle-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  transition: background 150ms ease, color 150ms ease, transform 100ms ease;
+  background: var(--panel-muted);
+  color: var(--muted);
+}
+
+.ai-toggle-button:hover {
+  background: var(--accent);
+  color: var(--primary);
+  transform: scale(1.05);
+}
+
+/* Active state when AI is enabled (checkbox is checked) */
+.ai-toggle-checklist input[type="checkbox"]:checked ~ .ai-toggle-button,
+.ai-toggle-checklist label:has(input:checked) .ai-toggle-button {
+  background: var(--primary);
+  color: #fff;
+}
+
+.ai-toggle-checklist input[type="checkbox"]:checked ~ .ai-toggle-button:hover,
+.ai-toggle-checklist label:has(input:checked) .ai-toggle-button:hover {
+  background: var(--primary-hover);
+  color: #fff;
+}
+
+.ai-toggle-icon {
+  width: 20px;
+  height: 20px;
+}
+
+/* Adjust search input padding for AI toggle */
+.input-with-icon:has(.ai-toggle-wrapper) .search-input {
+  padding-right: 60px;
+}
+
 /* Genie AI Status Indicator */
 .genie-status {
   display: flex;
@@ -316,6 +385,7 @@ body {
 
 .card-header {
   display: flex;
+  align-items: flex-start;
   gap: 20px;
   padding: 24px 28px 0;
 }
@@ -404,12 +474,6 @@ body {
 }
 
 /* Download button styles */
-.download-wrapper {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
 .download-button {
   display: inline-flex;
   align-items: center;
@@ -437,19 +501,6 @@ body {
 .download-button:disabled {
   opacity: 0.7;
   cursor: wait;
-}
-
-.download-spinner {
-  width: 16px;
-  height: 16px;
-  border: 2px solid var(--border);
-  border-top-color: var(--primary);
-  border-radius: 50%;
-  animation: spin 0.8s linear infinite;
-}
-
-.download-spinner.hidden {
-  display: none;
 }
 
 /* Load more / infinite scroll styles */

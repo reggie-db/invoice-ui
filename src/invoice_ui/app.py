@@ -2,8 +2,9 @@ import json
 import os
 from pathlib import Path
 
-from dash import ALL, MATCH, Dash, Input, Output, State, callback_context, dcc
+from dash import ALL, Dash, Input, Output, State, callback_context
 from dash.exceptions import PreventUpdate
+from flask import Response, request, stream_with_context
 from reggie_core import logs
 from reggie_tools import clients, configs
 
@@ -40,6 +41,25 @@ USE_GENERIC_BRANDING = os.getenv("INVOICE_UI_GENERIC", "false").lower() in {
 # Branding configuration
 APP_TITLE = "Invoice Search" if USE_GENERIC_BRANDING else "Hardware Invoice Search"
 
+# Configure invoice table name
+_INVOICE_TABLE_NAME_KEY = "INVOICE_TABLE_NAME"
+_DEFAULT_INVOICE_TABLE_NAME = "reggie_pierce.invoice_pipeline_dev.info_parse"
+if not os.environ.get(_INVOICE_TABLE_NAME_KEY, None):
+    os.environ[_INVOICE_TABLE_NAME_KEY] = _DEFAULT_INVOICE_TABLE_NAME
+_INVOICE_TABLE_NAME = os.environ[_INVOICE_TABLE_NAME_KEY]
+LOG.info("%s: %s", _INVOICE_TABLE_NAME_KEY, _INVOICE_TABLE_NAME)
+
+# Configure genie space id
+_INVOICE_GENIE_SPACE_ID_KEY = "INVOICE_GENIE_SPACE_ID"
+if _INVOICE_TABLE_NAME == _DEFAULT_INVOICE_TABLE_NAME:
+    if not os.environ.get(_INVOICE_GENIE_SPACE_ID_KEY, None):
+        os.environ[_INVOICE_GENIE_SPACE_ID_KEY] = "01f0cfa53c571bbb9b36f0e14a4e408d"
+LOG.info(
+    "%s: %s",
+    _INVOICE_GENIE_SPACE_ID_KEY,
+    os.environ.get(_INVOICE_GENIE_SPACE_ID_KEY, None),
+)
+
 _service = get_invoice_service("impl" if USE_LIVE else "demo")
 _assets_path = Path(__file__).resolve().parents[2] / "assets"
 
@@ -52,6 +72,7 @@ app = Dash(
 
 # Theme configuration for index string
 _THEME_CLASS = "theme-generic" if USE_GENERIC_BRANDING else ""
+_FAVICON = "favicon-generic.ico" if USE_GENERIC_BRANDING else "favicon.ico"
 _FONT_URL = (
     "https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Fira+Code:wght@400;500&display=swap"
     if USE_GENERIC_BRANDING
@@ -64,7 +85,7 @@ app.index_string = f"""<!DOCTYPE html>
     <head>
         {{%metas%}}
         <title>{{%title%}}</title>
-        <link rel="icon" type="image/x-icon" href="/assets/favicon.ico">
+        <link rel="icon" type="image/x-icon" href="/assets/{_FAVICON}">
         <link rel="preconnect" href="https://fonts.googleapis.com">
         <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
         <link href="{_FONT_URL}" rel="stylesheet">
@@ -85,26 +106,86 @@ app.index_string = f"""<!DOCTYPE html>
 init_websocket(app.server)
 LOG.info("WebSocket initialized on /ws/genie")
 
+
+# Flask route for direct file downloads (bypasses Dash callback timeout)
+@app.server.route("/api/download")
+def download_file():
+    """
+    Stream file download directly from DBFS.
+
+    Opens in new tab, streams file directly to browser.
+    """
+    file_path = request.args.get("path", "")
+    if not file_path:
+        return Response("Missing path parameter", status=400)
+
+    LOG.info("Download requested: %s", file_path)
+
+    try:
+        workspace = clients.workspace_client()
+
+        workspace_path = file_path
+        if file_path.startswith("dbfs:/"):
+            workspace_path = file_path[5:]
+
+        filename = os.path.basename(file_path) if "/" in file_path else "invoice.pdf"
+
+        def generate():
+            file_response = workspace.files.download(workspace_path)
+            while True:
+                chunk = file_response.contents.read(8192)
+                if not chunk:
+                    break
+                yield chunk
+
+        return Response(
+            stream_with_context(generate()),
+            mimetype="application/pdf",
+            headers={
+                "Content-Disposition": f'attachment; filename="{filename}"',
+                "Cache-Control": "no-cache",
+            },
+        )
+
+    except Exception as e:
+        LOG.error("Download error: %s", e, exc_info=True)
+        return Response(f"Download failed: {e}", status=500)
+
+
+# Check if AI search is available
+AI_AVAILABLE = _service.ai_available
+
 # Initialize with query from URL fragment if present
 _initial_query = ""
 _initial_page = _service.list_invoices(
     query=_initial_query or None, page=1, page_size=PAGE_SIZE
 )
 
-app.layout = build_layout(_initial_page, _initial_query)
+app.layout = build_layout(_initial_page, _initial_query, ai_available=AI_AVAILABLE)
+
+
+# Build callback inputs based on whether AI is available
+_search_inputs = [
+    Input("search-query", "value"),
+    Input("scroll-trigger", "data"),
+]
+_search_states = [State("invoice-state", "data")]
+
+if AI_AVAILABLE:
+    _search_states.append(State("ai-search-toggle", "value"))
 
 
 @app.callback(
     Output("invoice-state", "data"),
-    Input("search-query", "value"),
-    Input("scroll-trigger", "data"),
-    State("invoice-state", "data"),
+    _search_inputs,
+    _search_states,
     prevent_initial_call=False,
 )
 def update_invoice_state(
     query: str | None,
     scroll_counter: int | None,
     state_dict: dict | None,
+    ai_toggle: list | None = None,
 ) -> dict:
     """Handle both filter changes and scroll-based lazy loading."""
     ctx = callback_context
@@ -114,12 +195,16 @@ def update_invoice_state(
     state = AppState.from_dict(state_dict)
     trigger = ctx.triggered[0]["prop_id"].split(".")[0]
 
+    # Determine if AI search is enabled (default True if available)
+    use_ai = AI_AVAILABLE and (ai_toggle is None or "enabled" in (ai_toggle or []))
+
     if trigger == "search-query":
         query_text = (query or "").strip()
         page = _service.list_invoices(
             query=query_text or None,
             page=1,
             page_size=state.page_size,
+            use_ai=use_ai,
         )
         return serialize_page(page, query_text, scroll_counter or 0)
 
@@ -135,6 +220,7 @@ def update_invoice_state(
             query=query_text or None,
             page=next_page_num,
             page_size=state.page_size,
+            use_ai=use_ai,
         )
         # Combine items from previous state with new page items
         combined_items = state.items + [
@@ -250,147 +336,142 @@ def update_genie_display(msg: dict | None) -> tuple[str, str, str]:
     )
 
 
-# Shared hash decode logic for URL fragment handling
-_DECODE_HASH_FN = """
+# Hash decode logic for URL fragment handling
+# Decodes { q: "query", ai: true/false } from base64-encoded JSON
+_DECODE_HASH_QUERY_FN = """
     function(trigger) {
-        const hash = window.location.hash.substring(1);
-        if (!hash || !hash.startsWith('search/')) return '';
-        try {
-            const encoded = hash.substring(7);
-            const padding = 4 - (encoded.length % 4);
-            return atob(padding !== 4 ? encoded + '='.repeat(padding) : encoded);
-        } catch (e) {
-            return '';
-        }
+        if (typeof window === "undefined" || !window.__decodeHashState) return '';
+        return window.__decodeHashState().q || '';
     }
 """
 
 # Initialize hash router and read initial hash on page load
 app.clientside_callback(
-    _DECODE_HASH_FN,
+    _DECODE_HASH_QUERY_FN,
     Output("search-query", "value"),
     Input("url", "pathname"),
     prevent_initial_call=False,
 )
 
-# Listen for hash changes and sync with Dash
+# Listen for hash changes and sync search query with Dash
 app.clientside_callback(
-    _DECODE_HASH_FN,
+    _DECODE_HASH_QUERY_FN,
     Output("search-query", "value", allow_duplicate=True),
     Input("url", "hash"),
     prevent_initial_call=True,
 )
 
-# Update hash when search query changes
-app.clientside_callback(
-    """
-    function(query) {
-        if (typeof window === "undefined") {
+# Register AI toggle hash callbacks only if AI is available
+if AI_AVAILABLE:
+    # Decode AI state from hash on page load
+    app.clientside_callback(
+        """
+        function(trigger) {
+            if (typeof window === "undefined" || !window.__decodeHashState) return ['enabled'];
+            const state = window.__decodeHashState();
+            return state.ai !== false ? ['enabled'] : [];
+        }
+        """,
+        Output("ai-search-toggle", "value"),
+        Input("url", "pathname"),
+        prevent_initial_call=False,
+    )
+
+    # Listen for hash changes and sync AI toggle with Dash
+    app.clientside_callback(
+        """
+        function(trigger) {
+            if (typeof window === "undefined" || !window.__decodeHashState) {
+                return window.dash_clientside.no_update;
+            }
+            const state = window.__decodeHashState();
+            return state.ai !== false ? ['enabled'] : [];
+        }
+        """,
+        Output("ai-search-toggle", "value", allow_duplicate=True),
+        Input("url", "hash"),
+        prevent_initial_call=True,
+    )
+
+    # Update hash when search query or AI toggle changes
+    app.clientside_callback(
+        """
+        function(query, aiToggle) {
+            if (typeof window === "undefined") {
+                return window.dash_clientside.no_update;
+            }
+            if (window.__updateHashFromState) {
+                const aiEnabled = aiToggle && aiToggle.includes('enabled');
+                window.__updateHashFromState(query || '', aiEnabled);
+            }
             return window.dash_clientside.no_update;
         }
-        if (window.__updateHashFromQuery) {
-            window.__updateHashFromQuery(query || '');
+        """,
+        Output("url", "hash", allow_duplicate=True),
+        Input("search-query", "value"),
+        Input("ai-search-toggle", "value"),
+        prevent_initial_call=True,
+    )
+else:
+    # Update hash when search query changes (no AI toggle)
+    app.clientside_callback(
+        """
+        function(query) {
+            if (typeof window === "undefined") {
+                return window.dash_clientside.no_update;
+            }
+            if (window.__updateHashFromQuery) {
+                window.__updateHashFromQuery(query || '');
+            }
+            return window.dash_clientside.no_update;
         }
+        """,
+        Output("url", "hash", allow_duplicate=True),
+        Input("search-query", "value"),
+        prevent_initial_call=True,
+    )
+
+
+# Handle download button clicks - opens Flask route in new tab
+app.clientside_callback(
+    """
+    function(n_clicks, state) {
+        if (!n_clicks || n_clicks === 0 || !state) {
+            return window.dash_clientside.no_update;
+        }
+        
+        const triggeredId = dash_clientside.callback_context.triggered_id;
+        if (!triggeredId || !triggeredId.index) {
+            return window.dash_clientside.no_update;
+        }
+        
+        const invoiceId = triggeredId.index;
+        if (!invoiceId.startsWith('invoice-')) {
+            return window.dash_clientside.no_update;
+        }
+        
+        const invoiceNumber = invoiceId.replace('invoice-', '');
+        const items = state.items || [];
+        const invoice = items.find(inv => 
+            inv.invoice && inv.invoice.invoice_number === invoiceNumber
+        );
+        
+        if (!invoice || !invoice.path) {
+            console.error('Invoice or path not found');
+            return window.dash_clientside.no_update;
+        }
+        
+        // Open download in new tab (Flask streams file directly)
+        window.open('/api/download?path=' + encodeURIComponent(invoice.path), '_blank');
+        
         return window.dash_clientside.no_update;
     }
     """,
-    Output("url", "hash", allow_duplicate=True),
-    Input("search-query", "value"),
-    prevent_initial_call=True,
-)
-
-
-# Show spinner and disable button when download is clicked
-app.clientside_callback(
-    """
-    function(n_clicks) {
-        if (!n_clicks || n_clicks === 0) {
-            return [window.dash_clientside.no_update, window.dash_clientside.no_update];
-        }
-        return ["download-spinner", true];
-    }
-    """,
-    [
-        Output({"type": "download-spinner", "index": MATCH}, "className"),
-        Output({"type": "download-button", "index": MATCH}, "disabled"),
-    ],
-    Input({"type": "download-button", "index": MATCH}, "n_clicks"),
-    prevent_initial_call=True,
-)
-
-# Hide spinner and re-enable buttons when download completes
-app.clientside_callback(
-    """
-    function(data) {
-        const spinners = document.querySelectorAll('.download-spinner');
-        spinners.forEach(s => s.classList.add('hidden'));
-        const buttons = document.querySelectorAll('.download-button');
-        buttons.forEach(b => b.disabled = false);
-        return window.dash_clientside.no_update;
-    }
-    """,
-    Output("download-file", "data", allow_duplicate=True),
-    Input("download-file", "data"),
-    prevent_initial_call=True,
-)
-
-
-@app.callback(
     Output("download-file", "data"),
     Input({"type": "download-button", "index": ALL}, "n_clicks"),
     State("invoice-state", "data"),
     prevent_initial_call=True,
 )
-def handle_download(
-    n_clicks_list: list[int | None], state_dict: dict | None
-) -> dict | None:
-    """Handle PDF download when download button is clicked."""
-    ctx = callback_context
-
-    if not n_clicks_list or all(n is None or n == 0 for n in n_clicks_list):
-        raise PreventUpdate
-
-    if not ctx.triggered or not state_dict:
-        raise PreventUpdate
-
-    triggered_id = ctx.triggered_id
-    invoice_id = triggered_id.get("index", "")
-    if not invoice_id.startswith("invoice-"):
-        raise PreventUpdate
-
-    invoice_number = invoice_id.replace("invoice-", "")
-    LOG.info("Download requested for invoice: %s", invoice_number)
-
-    page = deserialize_page(state_dict)
-    invoice = next(
-        (inv for inv in page.items if inv.invoice.invoice_number == invoice_number),
-        None,
-    )
-
-    if not invoice or not invoice.path:
-        raise PreventUpdate
-
-    LOG.info("Downloading from path: %s", invoice.path)
-
-    try:
-        workspace = clients.workspace_client()
-        file_path = invoice.path
-
-        workspace_path = file_path
-        if file_path.startswith("dbfs:/"):
-            workspace_path = file_path[5:]
-
-        file_response = workspace.files.download(workspace_path)
-        file_content = file_response.contents.read()
-
-        filename = os.path.basename(file_path) if "/" in file_path else "invoice.pdf"
-
-        LOG.info("Download successful: %s", filename)
-        return dcc.send_bytes(file_content, filename=filename)
-
-    except Exception as e:
-        LOG.error("Error downloading file: %s", e, exc_info=True)
-        raise PreventUpdate
 
 
 # Initialize scroll listener and handle scroll events

@@ -11,16 +11,6 @@ from simple_websocket import Server as WebSocketServer
 WebSocket integration for broadcasting Genie AI status updates.
 
 Uses flask-sock to add WebSocket support to the Dash/Flask server on the same port.
-No separate server needed.
-
-Usage:
-    from invoice_ui.ws_server import init_websocket, broadcast_genie_status
-
-    # Initialize with Flask app (call once during app setup)
-    init_websocket(app.server)
-
-    # Broadcast status updates (call from service layer)
-    broadcast_genie_status(status_dict)
 """
 
 LOG = logs.logger(__file__)
@@ -49,9 +39,7 @@ def init_websocket(flask_app: Flask) -> None:
         LOG.info("WebSocket client connected")
 
         try:
-            # Keep connection alive until client disconnects
             while True:
-                # Receive is blocking; will raise on disconnect
                 try:
                     ws.receive(timeout=30)
                 except Exception:
@@ -84,6 +72,5 @@ def broadcast_genie_status(status_dict: dict) -> None:
             except Exception:
                 disconnected.append(client)
 
-        # Clean up disconnected clients
         for client in disconnected:
             _clients.discard(client)

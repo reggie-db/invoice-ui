@@ -31,15 +31,13 @@ LOG = logs.logger(__file__)
 class InvoiceServiceImpl(InvoiceService):
     """Invoice service implementation using Databricks Spark and Genie AI."""
 
-    _TABLE_NAME = (
-        os.getenv("INVOICE_TABLE_NAME", "")
-        or "reggie_pierce.invoice_pipeline_dev.info_parse"
-    )
     _DISK_CACHE = caches.DiskCache(paths.temp_dir() / "invoice_service_v2")
 
     def __init__(self) -> None:
         self._spark = clients.spark()
-        genie_space_id = os.getenv("INVOICE_GENIE_SPACE_ID", "")
+        self.table_name = os.getenv("INVOICE_TABLE_NAME")
+        assert self.table_name, "INVOICE_TABLE_NAME is not set"
+        genie_space_id = os.getenv("INVOICE_GENIE_SPACE_ID", None)
         if genie_space_id:
             wc = clients.workspace_client()
             self._genie_service = genie.Service(wc, genie_space_id)
@@ -50,11 +48,17 @@ class InvoiceServiceImpl(InvoiceService):
             self._genie_service = None
             self._genie_conversation_id = None
 
+    @property
+    def ai_available(self) -> bool:
+        """Return True if AI-powered search is available."""
+        return self._genie_service is not None
+
     def list_invoices(
         self,
         query: str | None = None,
         page: int = 1,
         page_size: int = 10,
+        use_ai: bool = True,
     ) -> InvoicePage:
         """
         List invoices with optional filtering and pagination.
@@ -63,15 +67,17 @@ class InvoiceServiceImpl(InvoiceService):
             query: Search query string for filtering.
             page: Page number (1-indexed).
             page_size: Number of items per page.
+            use_ai: Whether to use AI-powered search (if available).
         """
         page = max(page, 1)
         page_size = max(page_size, 1)
 
         df = self._apply_filter(
-            self._spark.read.table(self._TABLE_NAME).select(
+            self._spark.read.table(self.table_name).select(
                 "content_hash", "value", "path"
             ),
             query,
+            use_ai=use_ai,
         )
 
         total = df.count()
@@ -159,17 +165,25 @@ class InvoiceServiceImpl(InvoiceService):
             path=path,
         )
 
-    def _apply_filter(self, df: DataFrame, query: str | None) -> DataFrame:
-        """Apply search filter to DataFrame, using Genie AI if available."""
+    def _apply_filter(
+        self, df: DataFrame, query: str | None, use_ai: bool = True
+    ) -> DataFrame:
+        """Apply search filter to DataFrame, using Genie AI if available and enabled."""
         if query:
             query = " ".join(query.split())
         if not query:
             return df
-        LOG.info("Filtering with query: %s", query)
-        content_hashes = self._filter_content_hash(query)
-        if content_hashes is not None:
-            return df.filter(F.col("content_hash").isin(content_hashes))
-        df = df.filter(F.lower(F.col("value").cast("string")).contains(query))
+
+        LOG.info("Filtering with query: %s (use_ai=%s)", query, use_ai)
+
+        # Only use Genie if AI is enabled
+        if use_ai:
+            content_hashes = self._filter_content_hash(query)
+            if content_hashes is not None:
+                return df.filter(F.col("content_hash").isin(content_hashes))
+
+        # Fall back to plain text search
+        df = df.filter(F.lower(F.col("value").cast("string")).contains(query.lower()))
         return df
 
     def _filter_content_hash(self, query: str) -> list[str] | None:
@@ -179,14 +193,12 @@ class InvoiceServiceImpl(InvoiceService):
 
         cache_key = objects.hash([self._genie_conversation_id, query]).hexdigest()
 
-        def _load():
-            final_response = None
+        def _load() -> list[str] | None:
             try:
                 for response in self._genie_service.chat(
                     self._genie_conversation_id, query
                 ):
                     LOG.info("Genie response: %s", objects.to_json(response))
-                    final_response = response
                     # Broadcast status update via WebSocket
                     _broadcast_status(
                         GenieStatusMessage(
@@ -195,25 +207,27 @@ class InvoiceServiceImpl(InvoiceService):
                             message=_extract_genie_message(response),
                         )
                     )
-                return final_response
+                    for response_query in response.queries:
+                        try:
+                            df = self._spark.sql(response_query)
+                            if "content_hash" in df.columns:
+                                content_hashes = [
+                                    row.content_hash for row in df.collect()
+                                ]
+                                if content_hashes:
+                                    return content_hashes
+                        except Exception:
+                            LOG.warning("Query error %s", response_query, exc_info=True)
+                return None
             finally:
                 # Send final "inactive" status
                 _broadcast_status(GenieStatusMessage(active=False))
 
-        genie_response = self._DISK_CACHE.get_or_load(
+        content_hashes = self._DISK_CACHE.get_or_load(
             cache_key, _load, expire=60 * 5
         ).value
-
-        if not genie_response:
-            return None
-
-        for response_query in genie_response.queries:
-            try:
-                rows = self._spark.sql(response_query).collect()
-                return [row.content_hash for row in rows]
-            except Exception:
-                LOG.warning("Query error %s", response_query, exc_info=True)
-        return None
+        LOG.info("Content hashes: %s", content_hashes)
+        return content_hashes
 
 
 def _extract_genie_message(response: genie.GenieResponse) -> str | None:

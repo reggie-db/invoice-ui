@@ -1,6 +1,9 @@
 /**
- * Hash router handler for managing search query in URL fragment.
+ * Hash router handler for managing search state in URL fragment.
  * Uses @techexp/hash-router library for routing without polling.
+ * 
+ * Hash format: #search/<base64-encoded-json>
+ * JSON structure: { q: "query", ai: true/false }
  */
 
 (function () {
@@ -12,14 +15,11 @@
 
     // Wait for DOM and Dash to be ready
     function initializeRouter() {
-        // Try to get HashRouter from window (loaded via script tag or CDN)
-        // If using npm package, it should be available as window.HashRouter or via import
         let HashRouter;
 
         if (typeof window !== 'undefined' && window.HashRouter) {
             HashRouter = window.HashRouter;
         } else if (typeof require !== 'undefined') {
-            // Try CommonJS require (for Node/bundled environments)
             try {
                 HashRouter = require('@techexp/hash-router');
             } catch (e) {
@@ -28,7 +28,6 @@
         }
 
         if (!HashRouter) {
-            // Load from CDN as fallback
             const script = document.createElement('script');
             script.src = 'https://cdn.jsdelivr.net/npm/@techexp/hash-router@0.3.0/dist/HashRouter-script-min.js';
             script.onload = function () {
@@ -44,52 +43,78 @@
     }
 
     function setupRouter(HashRouter) {
-        // Create router instance
         const router = HashRouter.createRouter();
 
-        // Base64 encode/decode helpers
-        function encodeQuery(query) {
+        /**
+         * Encode search state to base64 string.
+         * @param {string} query - Search query
+         * @param {boolean} ai - AI search enabled
+         * @returns {string} Base64 encoded JSON
+         */
+        function encodeState(query, ai) {
             if (!query || !query.trim()) {
                 return '';
             }
             try {
-                return btoa(query.trim()).replace(/=+$/, '');
+                const state = { q: query.trim() };
+                // Only include ai if it's false (default is true)
+                if (ai === false) {
+                    state.ai = false;
+                }
+                return btoa(JSON.stringify(state)).replace(/=+$/, '');
             } catch (e) {
                 return '';
             }
         }
 
-        function decodeQuery(encoded) {
+        /**
+         * Decode base64 state string to object.
+         * @param {string} encoded - Base64 encoded JSON
+         * @returns {object} Decoded state { q: string, ai: boolean }
+         */
+        function decodeState(encoded) {
             if (!encoded) {
-                return '';
+                return { q: '', ai: true };
             }
             try {
                 const padding = 4 - (encoded.length % 4);
                 const padded = padding !== 4 ? encoded + '='.repeat(padding) : encoded;
-                return atob(padded);
+                const decoded = atob(padded);
+                
+                // Try to parse as JSON first (new format)
+                try {
+                    const state = JSON.parse(decoded);
+                    return {
+                        q: state.q || '',
+                        ai: state.ai !== false  // Default to true
+                    };
+                } catch (jsonErr) {
+                    // Fall back to old format (plain text query)
+                    return { q: decoded, ai: true };
+                }
             } catch (e) {
-                return '';
+                return { q: '', ai: true };
             }
         }
 
         // Route handler for search query: search/:query
-        // Note: We don't directly update Dash components here. Instead, we let Dash's
-        // callback listening to url.hash handle the update. This prevents errors from
-        // calling set_props before Dash is ready.
         router.add('search/:query', function (path, params) {
-            // Hash router has already updated the hash, so Dash's callback will pick it up
-            // No need to manually update the search input here
+            // Hash router has already updated the hash, Dash's callback will pick it up
         });
 
-        // Route handler for empty hash (no search)
+        // Route handler for empty hash
         router.add('', function () {
-            // Hash router has already updated the hash, so Dash's callback will pick it up
-            // No need to manually update the search input here
+            // Hash router has already updated the hash, Dash's callback will pick it up
         });
 
-        // Function to update hash when search query changes (called from Dash callback)
-        window.__updateHashFromQuery = function (query) {
-            const encoded = encodeQuery(query);
+        /**
+         * Update hash when search state changes.
+         * Called from Dash clientside callback.
+         * @param {string} query - Search query
+         * @param {boolean} ai - AI search enabled
+         */
+        window.__updateHashFromState = function (query, ai) {
+            const encoded = encodeState(query, ai);
             if (encoded) {
                 window.location.href = '#search/' + encoded;
             } else {
@@ -97,19 +122,36 @@
             }
         };
 
-        // Store router for external access
-        window.__hashRouter = router;
+        // Legacy function for backward compatibility
+        window.__updateHashFromQuery = function (query) {
+            // Get current AI state from hash or default to true
+            const currentState = decodeState(
+                window.location.hash.startsWith('#search/') 
+                    ? window.location.hash.substring(8) 
+                    : ''
+            );
+            window.__updateHashFromState(query, currentState.ai);
+        };
 
-        // Hash-router automatically handles hash changes, including initial load
-        // No need to manually navigate - the router listens to hashchange events
+        /**
+         * Decode current hash state.
+         * Called from Dash clientside callback.
+         * @returns {object} { q: string, ai: boolean }
+         */
+        window.__decodeHashState = function () {
+            const hash = window.location.hash.substring(1);
+            if (!hash || !hash.startsWith('search/')) {
+                return { q: '', ai: true };
+            }
+            return decodeState(hash.substring(7));
+        };
+
+        window.__hashRouter = router;
     }
 
-    // Initialize when DOM is ready
     if (document.readyState === 'loading') {
         document.addEventListener('DOMContentLoaded', initializeRouter);
     } else {
-        // DOM already loaded
         initializeRouter();
     }
 })();
-

@@ -57,22 +57,14 @@ def _build_header(invoice: Invoice, invoice_id: str) -> html.Div:
                     ),
                 ],
             ),
-            html.Div(
-                className="download-wrapper",
+            html.Button(
+                id={"type": "download-button", "index": invoice_id},
+                className="download-button",
+                title="Download PDF",
+                n_clicks=0,
                 children=[
-                    html.Button(
-                        id={"type": "download-button", "index": invoice_id},
-                        className="download-button",
-                        n_clicks=0,
-                        children=[
-                            DashIconify(icon="lucide:download", width=16),
-                            "Download",
-                        ],
-                    ),
-                    html.Span(
-                        id={"type": "download-spinner", "index": invoice_id},
-                        className="download-spinner hidden",
-                    ),
+                    DashIconify(icon="lucide:download", width=16),
+                    "Download",
                 ],
             ),
         ],
