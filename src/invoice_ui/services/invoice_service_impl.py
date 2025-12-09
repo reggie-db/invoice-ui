@@ -1,3 +1,10 @@
+"""
+Spark-backed implementation of InvoiceService with Genie AI support.
+
+This service implementation uses Databricks Spark for data access
+and optionally integrates with Genie AI for intelligent search.
+"""
+
 import functools
 import os
 from datetime import datetime
@@ -10,7 +17,6 @@ from reggie_concurio import caches
 from reggie_core import logs, objects, paths
 from reggie_tools import clients, genie
 
-from invoice_ui.models.common import GenieStatusMessage
 from invoice_ui.models.invoice import (
     Invoice,
     InvoiceDetails,
@@ -24,13 +30,20 @@ from invoice_ui.models.invoice import (
 from invoice_ui.services.invoice_service import InvoiceService
 from invoice_ui.utils import parse_date
 
-"""Spark-backed implementation of InvoiceService with Genie AI support."""
-
 LOG = logs.logger(__file__)
 
 
 def _parse_invoice(b: benedict, path: str) -> Invoice:
-    """Parse a benedict dictionary into an Invoice dataclass."""
+    """
+    Parse a benedict dictionary into an Invoice dataclass.
+
+    Args:
+        b: Benedict dictionary containing invoice data.
+        path: File path to the invoice document.
+
+    Returns:
+        Parsed Invoice object.
+    """
     line_items = [
         LineItem(
             description=li.get("description", ""),
@@ -89,6 +102,7 @@ class InvoiceServiceImpl(InvoiceService):
     _DISK_CACHE = caches.DiskCache(paths.temp_dir() / "invoice_service_v2")
 
     def __init__(self) -> None:
+        """Initialize the service with table name from environment."""
         self.table_name = os.getenv("INVOICE_TABLE_NAME")
         assert self.table_name, "INVOICE_TABLE_NAME is not set"
 
@@ -112,6 +126,9 @@ class InvoiceServiceImpl(InvoiceService):
             page: Page number (1-indexed).
             page_size: Number of items per page.
             use_ai: Whether to use AI-powered search (if available).
+
+        Returns:
+            Paginated invoice results.
         """
         page = max(page, 1)
         page_size = max(page_size, 1)
@@ -158,7 +175,17 @@ class InvoiceServiceImpl(InvoiceService):
     def _apply_filter(
         self, df: DataFrame, query: str | None, use_ai: bool = True
     ) -> DataFrame:
-        """Apply search filter to DataFrame, using Genie AI if available and enabled."""
+        """
+        Apply search filter to DataFrame, using Genie AI if available and enabled.
+
+        Args:
+            df: Input DataFrame.
+            query: Search query string.
+            use_ai: Whether to use AI search.
+
+        Returns:
+            Filtered DataFrame.
+        """
         if query:
             query = " ".join(query.split())
         if not query:
@@ -177,7 +204,15 @@ class InvoiceServiceImpl(InvoiceService):
         return df
 
     def _filter_content_hash(self, query: str) -> list[str] | None:
-        """Use Genie AI to get content hashes matching the query."""
+        """
+        Use Genie AI to get content hashes matching the query.
+
+        Args:
+            query: Search query for Genie.
+
+        Returns:
+            List of matching content hashes or None if Genie unavailable.
+        """
         if not self.ai_available:
             return None
 
@@ -188,10 +223,6 @@ class InvoiceServiceImpl(InvoiceService):
                 genie_service, conversation_id = self._genie_context()
                 for response in genie_service.chat(conversation_id, query):
                     LOG.info("Genie response: %s", objects.to_json(response))
-                    # Broadcast status update via WebSocket
-                    genie_status_message = GenieStatusMessage.from_response(response)
-                    if genie_status_message.status or genie_status_message.message:
-                        _broadcast_status(genie_status_message)
                     for response_query in response.queries():
                         try:
                             df = clients.spark().sql(response_query)
@@ -204,9 +235,9 @@ class InvoiceServiceImpl(InvoiceService):
                         except Exception:
                             LOG.warning("Query error %s", response_query, exc_info=True)
                 return None
-            finally:
-                # Send final "inactive" status
-                _broadcast_status(GenieStatusMessage(active=False))
+            except Exception as e:
+                LOG.warning("Genie query failed: %s", e)
+                return None
 
         content_hashes = self._DISK_CACHE.get_or_load(
             cache_key, _load, expire=60 * 5
@@ -215,10 +246,17 @@ class InvoiceServiceImpl(InvoiceService):
         return content_hashes
 
     def _genie_space_id(self) -> str | None:
+        """Get Genie space ID from environment."""
         return os.getenv("INVOICE_GENIE_SPACE_ID", None) or None
 
     @functools.cache
     def _genie_context(self) -> tuple[genie.Service | None, str | None]:
+        """
+        Get or create Genie service and conversation context.
+
+        Returns:
+            Tuple of (GenieService, conversation_id) or (None, None).
+        """
         genie_space_id = self._genie_space_id()
         if genie_space_id:
             wc = clients.workspace_client()
@@ -229,15 +267,3 @@ class InvoiceServiceImpl(InvoiceService):
             return service, conversation_id
         else:
             return None, None
-
-
-def _broadcast_status(status: GenieStatusMessage) -> None:
-    """Broadcast Genie status update via WebSocket."""
-    try:
-        from invoice_ui.ws_server import broadcast_genie_status
-
-        broadcast_genie_status(status.to_dict())
-    except ImportError:
-        pass  # WebSocket not initialized
-    except Exception as e:
-        LOG.warning("Failed to broadcast Genie status: %s", e)

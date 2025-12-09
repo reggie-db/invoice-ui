@@ -1,13 +1,11 @@
-from dataclasses import dataclass, field
-
-from reggie_tools import genie
-
 """
 Common state models for the Invoice UI application.
 
 These models are designed for reuse across different features and may
 be shared with other applications in the future.
 """
+
+from dataclasses import dataclass, field
 
 
 @dataclass
@@ -35,11 +33,9 @@ class PaginationState:
 @dataclass
 class AppState:
     """
-    Unified application state stored in dcc.Store.
+    Unified application state for serialization.
 
     All UI state flows through this dataclass for type safety.
-    Genie status is intentionally excluded as it's managed via
-    WebSocket with real-time progress updates.
 
     Attributes:
         items: Serialized list of items (invoice dicts).
@@ -101,55 +97,3 @@ class AppState:
             query=data.get("query", ""),
             scroll_token=data.get("scroll_token", 0),
         )
-
-
-@dataclass
-class GenieStatusMessage:
-    """
-    WebSocket message for Genie AI query status updates.
-
-    This is sent via WebSocket, not stored in AppState.
-    """
-
-    active: bool = field(default=False)
-    status: str | None = field(default=None)
-    message: str | None = field(default=None)
-
-    def to_dict(self) -> dict:
-        """Serialize to JSON for WebSocket transmission."""
-        return {
-            "type": "genie_status",
-            "active": self.active,
-            "status": self.status,
-            "message": self.message,
-        }
-
-    @classmethod
-    def from_dict(cls, data: dict) -> "GenieStatusMessage":
-        """Deserialize from WebSocket message."""
-        return cls(
-            active=data.get("active", False),
-            status=data.get("status"),
-            message=data.get("message"),
-        )
-
-    @classmethod
-    def from_response(
-        cls, response: genie.GenieResponse | None
-    ) -> "GenieStatusMessage":
-        if response is None:
-            return cls()
-        return cls(
-            active=True,
-            status=response.status_display,
-            message=cls._extract_genie_message(response),
-        )
-
-    @staticmethod
-    def _extract_genie_message(response: genie.GenieResponse) -> str | None:
-        """Extract display message from a Genie response."""
-        if message := response.message:
-            content = message.content.strip() if message.content else None
-            if content:
-                return content
-        return None

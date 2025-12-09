@@ -1,13 +1,17 @@
+"""
+Demo implementation of the InvoiceService that ships with static data.
+
+This service provides in-memory invoice filtering backed by a demo dataset,
+useful for development and testing without Databricks connectivity.
+"""
+
 import time
 from typing import Sequence
 
 from invoice_ui.data.demo_invoices import DEMO_INVOICES
-from invoice_ui.models.common import GenieStatusMessage
 from invoice_ui.models.invoice import Invoice, InvoicePage
 from invoice_ui.services.invoice_service import InvoiceService
 from invoice_ui.utils import matches_query, virtual_slice
-
-"""Demo implementation of the InvoiceService that ships with static data."""
 
 
 class DemoInvoiceService(InvoiceService):
@@ -16,7 +20,12 @@ class DemoInvoiceService(InvoiceService):
     _VIRTUAL_TOTAL = 10000
 
     def __init__(self, invoices: Sequence[Invoice] | None = None) -> None:
-        """Initialize the service with the provided invoices or the default set."""
+        """
+        Initialize the service with the provided invoices or the default set.
+
+        Args:
+            invoices: Optional custom invoice list for testing.
+        """
         self._invoices: Sequence[Invoice] = invoices or DEMO_INVOICES
 
     @property
@@ -31,10 +40,21 @@ class DemoInvoiceService(InvoiceService):
         page_size: int = 10,
         use_ai: bool = True,
     ) -> InvoicePage:
-        """Return a paginated slice of invoices that match the optional query."""
-        # Broadcast demo status via WebSocket (only if searching)
+        """
+        Return a paginated slice of invoices that match the optional query.
+
+        Args:
+            query: Search query string for filtering.
+            page: Page number (1-indexed).
+            page_size: Number of items per page.
+            use_ai: Ignored in demo mode (no AI available).
+
+        Returns:
+            Paginated invoice results.
+        """
+        # Add small delay to simulate network latency
         if query and query.strip():
-            _broadcast_demo_status(query)
+            time.sleep(0.3)
 
         filtered = self._apply_filter(query)
         unlimited = not query or not query.strip()
@@ -52,31 +72,13 @@ class DemoInvoiceService(InvoiceService):
         return InvoicePage(items=items, total=total, page=page, page_size=page_size)
 
     def _apply_filter(self, query: str | None) -> Sequence[Invoice]:
-        """Filter invoices based on search query."""
+        """
+        Filter invoices based on search query.
+
+        Args:
+            query: Search query string.
+
+        Returns:
+            Filtered list of invoices.
+        """
         return [inv for inv in self._invoices if matches_query(inv, query or "")]
-
-
-def _broadcast_demo_status(query: str) -> None:
-    """Broadcast demo processing status via WebSocket."""
-    try:
-        from invoice_ui.ws_server import broadcast_genie_status
-
-        # Show "processing" status briefly
-        broadcast_genie_status(
-            GenieStatusMessage(
-                active=True,
-                status="Processing",
-                message=f"Searching for: {query}",
-            ).to_dict()
-        )
-
-        # Small delay to show the status
-        time.sleep(0.3)
-
-        # Clear status
-        broadcast_genie_status(GenieStatusMessage(active=False).to_dict())
-
-    except ImportError:
-        pass  # WebSocket not initialized
-    except Exception:
-        pass  # Ignore broadcast errors in demo mode

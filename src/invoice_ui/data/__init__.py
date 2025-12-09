@@ -1,2 +1,1 @@
-"""Static and demo data sources that back the Dash UI."""
-
+"""Static and demo data sources for the Invoice UI."""

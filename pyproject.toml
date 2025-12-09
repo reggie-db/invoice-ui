@@ -1,14 +1,11 @@
 [project]
 name = "invoice-ui"
-version = "0.1.0"
+version = "0.2.0"
 description = "Search through hardware invoices."
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
-    "dash>=2.17",
-    "dash-extensions>=1.0.0",
-    "dash-iconify>=0.1.2",
-    "flask-sock>=0.7.0",
+    "reflex>=0.6.0",
     "reggie-tools @ git+https://github.com/reggie-db/reggie-bricks-py.git@main#subdirectory=reggie-tools",
     "reggie-concurio @ git+https://github.com/reggie-db/reggie-bricks-py.git@main#subdirectory=reggie-concurio",
     "python-benedict",
