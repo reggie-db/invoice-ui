@@ -33,10 +33,13 @@ def invoice_results() -> rx.Component:
 
 def _results() -> rx.Component:
     return rx.box(
-        # Results summary
-        rx.box(
-            rx.text(InvoiceState.result_summary, class_name="muted"),
-            class_name="results-summary",
+        rx.cond(
+            InvoiceState.total >= 0,
+            rx.box(
+                rx.text(InvoiceState.result_summary, class_name="muted"),
+                class_name="results-summary",
+            ),
+            None,
         ),
         InfiniteScroll.create(
             rx.foreach(InvoiceState.invoices, invoice_card),

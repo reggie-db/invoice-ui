@@ -6,7 +6,6 @@ invoice listing, filtering, pagination, and Genie AI search status.
 """
 
 import os
-from typing import Generator
 
 import reflex as rx
 from reggie_core import logs
@@ -52,15 +51,15 @@ class InvoiceState(rx.State):
 
     # Invoice data using Reflex-compatible models
     invoices: list[InvoiceModel] = []
-    total: int = 0
+    total: int = -1
     page_size: int = PAGE_SIZE
     has_more: bool = True
+    is_loading: bool = True
 
     # Search state
     query: str = ""
     ai_enabled: bool = True
     ai_available: bool = False
-    is_loading: bool = True
 
     # Genie status
     genie_active: bool = False
@@ -85,70 +84,43 @@ class InvoiceState(rx.State):
     def on_load(self):
         """
         Event handler for initial page load.
-
-        Yields intermediate states to show loading, then fetches first page.
         """
-        self.is_loading = True
-        self.invoices = []
-        self.has_more = True
         self.ai_available = _get_service().ai_available
-
+        self._reset()
         self.load_more()
 
-    def search(self, query: str) -> Generator:
-        """
-        Event handler for search query changes.
-
-        Uses yield to provide intermediate loading states and Genie status updates.
-
-        Args:
-            query: The search query string.
-        """
-        self.query = query.strip() if query else ""
-        self.is_loading = True
-        self.invoices = []
-        self.page = 1
-        yield
-
-        try:
-            # Show genie status if AI is enabled and query is provided
-            if self.ai_enabled and self.query and self.ai_available:
-                self._update_genie_status(
-                    True, "Processing", f"Searching: {self.query}"
-                )
-                yield
-
-            invoice_page = self._fetch_invoices(self.query, 1, self.ai_enabled)
-            self.invoices = self._to_models(invoice_page)
-            self.total = invoice_page.total
-            self.page = invoice_page.page
-            self.has_more = invoice_page.has_more
-        except Exception as e:
-            LOG.error("Search failed: %s", e, exc_info=True)
-            self.invoices = []
-            self.total = 0
-            self.has_more = False
-        finally:
-            self._update_genie_status(False)
-            self.is_loading = False
+    def set_query(self, query: str):
+        """Set the query and reset the state."""
+        query = query.strip() if query else ""
+        if self.query == query:
+            return
+        self.query = query
+        self._reset()
+        self.load_more()
 
     @rx.event
     def load_more(self):
         """
         Event handler for infinite scroll pagination.
-
-        Yields intermediate states while loading additional invoices.
         """
         LOG.info(
-            "Load Started - has_more: %s length:%s", self.has_more, len(self.invoices)
+            "Load Started - has_more:%s length:%s query:%s ai_enabled:%s ai_available:%s",
+            self.has_more,
+            len(self.invoices),
+            self.query,
+            self.ai_enabled,
+            self.ai_available,
         )
         if not self.has_more:
             return
-
         self.is_loading = True
+        if self.query and self.ai_enabled and self.ai_available:
+            LOG.info("Updating Genie status: %s", f"Searching: {self.query}")
+            self._update_genie_status(True, "Processing", f"Searching: {self.query}")
+
         try:
-            next_page = len(self.invoices) // self.page_size + 1
-            invoice_page = self._fetch_invoices(self.query, next_page, self.ai_enabled)
+            LOG.info("Fetching invoices")
+            invoice_page = self._fetch_invoices()
 
             # Append new invoices to existing list
             new_invoices = self._to_models(invoice_page)
@@ -159,9 +131,6 @@ class InvoiceState(rx.State):
             LOG.error("Failed to load more: %s", e, exc_info=True)
         finally:
             self.is_loading = False
-        LOG.info(
-            "Load Complete - has_more: %s length:%s", self.has_more, len(self.invoices)
-        )
 
     def toggle_ai(self):
         """Toggle AI search on/off and trigger a new search."""
@@ -179,15 +148,21 @@ class InvoiceState(rx.State):
         self.genie_status = status
         self.genie_message = message
 
-    def _fetch_invoices(
-        self, query: str | None, page: int, use_ai: bool
-    ) -> InvoicePage:
+    def _reset(self):
+        """Reset the state to initial values."""
+        self.invoices = []
+        self.total = -1
+        self.has_more = True
+        self.is_loading = True
+
+    def _fetch_invoices(self) -> InvoicePage:
         """Fetch invoices from the service."""
+        next_page = len(self.invoices) // self.page_size + 1
         return _get_service().list_invoices(
-            query=query or None,
-            page=page,
+            query=self.query or None,
+            page=next_page,
             page_size=self.page_size,
-            use_ai=use_ai,
+            use_ai=self.ai_enabled,
         )
 
     def _to_models(self, invoice_page: InvoicePage) -> list[InvoiceModel]:

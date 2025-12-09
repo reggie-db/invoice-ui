@@ -24,7 +24,7 @@ def search_panel() -> rx.Component:
             rx.input(
                 placeholder="Search by invoice number, PO number, serial number, company name...",
                 value=InvoiceState.query,
-                on_change=InvoiceState.search,
+                on_change=InvoiceState.set_query,
                 class_name="search-input",
                 debounce=300,
             ),
@@ -64,4 +64,3 @@ def search_panel() -> rx.Component:
         ),
         class_name="card search-card",
     )
-

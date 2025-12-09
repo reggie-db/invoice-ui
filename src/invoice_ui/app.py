@@ -4,13 +4,11 @@ Reflex application entry point for the Invoice Search UI.
 This module initializes the Reflex app and defines the main page layout.
 """
 
-import asyncio
 import os
 
 import reflex as rx
 from reggie_core import logs
 
-from invoice_ui.components.infinite_scroll import InfiniteScroll
 from invoice_ui.components.results import invoice_results
 from invoice_ui.components.search_panel import search_panel
 from invoice_ui.state import APP_SUBTITLE, APP_TITLE, InvoiceState
@@ -61,40 +59,6 @@ def page_header() -> rx.Component:
     )
 
 
-class ScrollState(rx.State):
-    items: list[int] = list(range(0, 30))
-    batch: int = 5
-
-    @rx.var
-    def has_more(self) -> bool:
-        return len(self.items) < (100 * 1000)
-
-    @rx.event(background=True)
-    async def load_more(self):
-        await asyncio.sleep(1)
-        start = len(self.items)
-        end = start + self.batch
-        async with self:
-            self.items = self.items + list(range(start, end))
-
-
-def test_scroll_area() -> rx.Component:
-    """Test infinite scroll component."""
-    return rx.scroll_area(
-        InfiniteScroll.create(
-            rx.foreach(ScrollState.items, lambda item: rx.text(item.to(str))),
-            data_length=ScrollState.items.length(),
-            next=ScrollState.load_more,
-            has_more=ScrollState.has_more,
-            loader=rx.box("loading"),
-            end_message=rx.box("done"),
-            scrollable_target="infinite-scroll-area",
-        ),
-        id="infinite-scroll-area",
-        height="100px",
-    )
-
-
 def index() -> rx.Component:
     """
     Build the main page layout.
@@ -104,14 +68,13 @@ def index() -> rx.Component:
     """
     return rx.box(
         rx.box(
-            test_scroll_area(),
             page_header(),
             search_panel(),
             invoice_results(),
             class_name="app-container",
         ),
         class_name="app-shell",
-        on_mount=InvoiceState.on_load,
+        on_mount=InvoiceState.load_more,
     )
 
 
