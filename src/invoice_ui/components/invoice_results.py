@@ -1,7 +1,9 @@
 from dash import html
 from dash_iconify import DashIconify
 
+from invoice_ui.components.genie_table import build_genie_table
 from invoice_ui.components.invoice_card import build_invoice_card
+from invoice_ui.models.common import GenieTableResult
 from invoice_ui.models.invoice import InvoicePage
 
 """Helpers that render the invoice result list."""
@@ -19,10 +21,35 @@ def build_loading_state() -> html.Div:
 
 
 def build_invoice_results(
-    invoice_page: InvoicePage | None, query: str | None, has_more: bool = False
+    invoice_page: InvoicePage | None,
+    query: str | None,
+    has_more: bool = False,
+    genie_table: GenieTableResult | None = None,
 ) -> html.Div:
-    """Return either the empty state or the list of invoice cards."""
+    """
+    Return either the empty state, Genie table, or the list of invoice cards.
+
+    Args:
+        invoice_page: The page of invoices to display.
+        query: The search query string.
+        has_more: Whether more pages are available.
+        genie_table: Optional Genie table result when no invoices matched.
+
+    Returns:
+        The results container div.
+    """
     invoices = invoice_page.items if invoice_page else []
+
+    # If no invoices but we have Genie table data, show that instead
+    if (not invoice_page or not invoices) and genie_table and genie_table.rows:
+        return html.Div(
+            className="results",
+            children=[
+                build_genie_table(genie_table, query),
+            ],
+        )
+
+    # Standard empty state
     if not invoice_page or not invoices:
         return html.Div(
             className="card empty-state",

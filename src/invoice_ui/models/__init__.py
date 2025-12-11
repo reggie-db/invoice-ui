@@ -1,6 +1,11 @@
 """Dataclasses and helpers for the invoice UI."""
 
-from invoice_ui.models.common import AppState, GenieStatusMessage, PaginationState
+from invoice_ui.models.common import (
+    AppState,
+    GenieStatusMessage,
+    GenieTableResult,
+    PaginationState,
+)
 from invoice_ui.models.invoice import (
     Invoice,
     InvoiceDetails,
@@ -19,6 +24,7 @@ from invoice_ui.models.invoice import (
 __all__ = [
     "AppState",
     "GenieStatusMessage",
+    "GenieTableResult",
     "Invoice",
     "InvoiceDetails",
     "InvoicePage",

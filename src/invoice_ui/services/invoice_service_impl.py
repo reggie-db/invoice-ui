@@ -10,7 +10,7 @@ from reggie_concurio import caches
 from reggie_core import logs, objects, paths
 from reggie_tools import clients, genie
 
-from invoice_ui.models.common import GenieStatusMessage
+from invoice_ui.models.common import GenieStatusMessage, GenieTableResult
 from invoice_ui.models.invoice import (
     Invoice,
     InvoiceDetails,
@@ -91,6 +91,21 @@ class InvoiceServiceImpl(InvoiceService):
     def __init__(self) -> None:
         self.table_name = os.getenv("INVOICE_TABLE_NAME")
         assert self.table_name, "INVOICE_TABLE_NAME is not set"
+        # Stores the last Genie table result when no content_hash was found
+        self._last_genie_table: GenieTableResult | None = None
+
+    def get_last_genie_table(self) -> GenieTableResult | None:
+        """
+        Return the last Genie table result from a query that had no content_hash.
+
+        This is populated after list_invoices is called with an AI query
+        that returns data but no content_hash column.
+        """
+        return self._last_genie_table
+
+    def clear_genie_table(self) -> None:
+        """Clear the stored Genie table result."""
+        self._last_genie_table = None
 
     @property
     def ai_available(self) -> bool:
@@ -177,40 +192,100 @@ class InvoiceServiceImpl(InvoiceService):
         return df
 
     def _filter_content_hash(self, query: str) -> list[str] | None:
-        """Use Genie AI to get content hashes matching the query."""
+        """
+        Use Genie AI to get content hashes matching the query.
+
+        If Genie returns a query without content_hash but with other data,
+        stores the result in _last_genie_table for display.
+        """
         if not self.ai_available:
             return None
 
+        # Clear any previous genie table result
+        self._last_genie_table = None
+
         cache_key = objects.hash([self._genie_context()[1], query]).hexdigest()
 
-        def _load() -> list[str] | None:
+        def _load() -> dict:
+            """Load and return both content_hashes and potential table data."""
+            result = {"content_hashes": None, "genie_table": None}
             try:
                 genie_service, conversation_id = self._genie_context()
+                genie_description = ""
+
                 for response in genie_service.chat(conversation_id, query):
                     LOG.info("Genie response: %s", objects.to_json(response))
                     # Broadcast status update via WebSocket
                     genie_status_message = GenieStatusMessage.from_response(response)
                     if genie_status_message.status or genie_status_message.message:
                         _broadcast_status(genie_status_message)
+
+                    # Capture any description from Genie
+                    if genie_status_message.message:
+                        genie_description = genie_status_message.message
+
                     for response_query in response.queries():
                         try:
                             df = clients.spark().sql(response_query)
-                            if "content_hash" in df.columns:
+                            columns = df.columns
+
+                            if "content_hash" in columns:
+                                # Found content_hash column, use for filtering
                                 content_hashes = [
                                     row.content_hash for row in df.collect()
                                 ]
                                 if content_hashes:
-                                    return content_hashes
+                                    result["content_hashes"] = content_hashes
+                                    return result
+                            else:
+                                # No content_hash, capture as raw table data
+                                rows = df.limit(100).collect()
+                                if rows:
+                                    table_rows = [
+                                        row.asDict() for row in rows
+                                    ]
+                                    result["genie_table"] = {
+                                        "columns": columns,
+                                        "rows": table_rows,
+                                        "query": response_query,
+                                        "description": genie_description,
+                                    }
+                                    LOG.info(
+                                        "Captured Genie table with %d rows, columns: %s",
+                                        len(table_rows),
+                                        columns,
+                                    )
                         except Exception:
                             LOG.warning("Query error %s", response_query, exc_info=True)
-                return None
+                return result
             finally:
                 # Send final "inactive" status
                 _broadcast_status(GenieStatusMessage(active=False))
 
-        content_hashes = self._DISK_CACHE.get_or_load(
+        cached_result = self._DISK_CACHE.get_or_load(
             cache_key, _load, expire=60 * 5
         ).value
+
+        # Handle both old format (list) and new format (dict)
+        if isinstance(cached_result, list):
+            # Old cache format, just content hashes
+            content_hashes = cached_result
+            LOG.info("Content hashes (old format): %s", content_hashes)
+            return content_hashes
+
+        # New format with both content_hashes and genie_table
+        content_hashes = cached_result.get("content_hashes") if cached_result else None
+        genie_table_data = cached_result.get("genie_table") if cached_result else None
+
+        if genie_table_data:
+            self._last_genie_table = GenieTableResult(
+                columns=genie_table_data.get("columns", []),
+                rows=genie_table_data.get("rows", []),
+                query=genie_table_data.get("query", ""),
+                description=genie_table_data.get("description", ""),
+            )
+            LOG.info("Stored Genie table result with %d rows", len(self._last_genie_table.rows))
+
         LOG.info("Content hashes: %s", content_hashes)
         return content_hashes
 

@@ -1,4 +1,5 @@
 from dataclasses import dataclass, field
+from typing import Any
 
 from reggie_tools import genie
 
@@ -8,6 +9,45 @@ Common state models for the Invoice UI application.
 These models are designed for reuse across different features and may
 be shared with other applications in the future.
 """
+
+
+@dataclass
+class GenieTableResult:
+    """
+    Holds raw table data from a Genie query when no content_hash column is found.
+
+    Attributes:
+        columns: List of column names.
+        rows: List of row dictionaries.
+        query: The SQL query that was executed.
+        description: Optional description from Genie about the results.
+    """
+
+    columns: list[str] = field(default_factory=list)
+    rows: list[dict[str, Any]] = field(default_factory=list)
+    query: str = ""
+    description: str = ""
+
+    def to_dict(self) -> dict:
+        """Serialize to JSON-compatible dictionary."""
+        return {
+            "columns": self.columns,
+            "rows": self.rows,
+            "query": self.query,
+            "description": self.description,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict | None) -> "GenieTableResult | None":
+        """Deserialize from dictionary."""
+        if not data:
+            return None
+        return cls(
+            columns=data.get("columns", []),
+            rows=data.get("rows", []),
+            query=data.get("query", ""),
+            description=data.get("description", ""),
+        )
 
 
 @dataclass
@@ -46,12 +86,14 @@ class AppState:
         pagination: Current pagination state.
         query: Current search query string.
         scroll_token: Token to track scroll-based loading.
+        genie_table: Raw table results from Genie when no content_hash found.
     """
 
     items: list[dict] = field(default_factory=list)
     pagination: PaginationState = field(default_factory=PaginationState)
     query: str = ""
     scroll_token: int = 0
+    genie_table: GenieTableResult | None = None
 
     @property
     def page(self) -> int:
@@ -73,6 +115,11 @@ class AppState:
         """Whether more pages exist."""
         return self.pagination.has_more
 
+    @property
+    def has_genie_table(self) -> bool:
+        """Check if there are Genie table results to display."""
+        return self.genie_table is not None and len(self.genie_table.rows) > 0
+
     def to_dict(self) -> dict:
         """Serialize state to JSON-compatible dictionary."""
         return {
@@ -83,6 +130,7 @@ class AppState:
             "has_more": self.pagination.has_more,
             "query": self.query,
             "scroll_token": self.scroll_token,
+            "genie_table": self.genie_table.to_dict() if self.genie_table else None,
         }
 
     @classmethod
@@ -100,6 +148,7 @@ class AppState:
             ),
             query=data.get("query", ""),
             scroll_token=data.get("scroll_token", 0),
+            genie_table=GenieTableResult.from_dict(data.get("genie_table")),
         )
 
 

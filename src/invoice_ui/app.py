@@ -151,13 +151,17 @@ def update_invoice_state(
     # Initial load or search query change: fetch first page
     if trigger == "initial-load-trigger" or trigger == "search-query":
         query_text = (query or "").strip()
+        # Clear any previous genie table before searching
+        _service.clear_genie_table()
         page = _service.list_invoices(
             query=query_text or None,
             page=1,
             page_size=PAGE_SIZE,
             use_ai=use_ai,
         )
-        return serialize_page(page, query_text, scroll_counter or 0)
+        # Get any genie table result that was captured during the search
+        genie_table = _service.get_last_genie_table()
+        return serialize_page(page, query_text, scroll_counter or 0, genie_table)
 
     # Scroll-triggered pagination
     if trigger == "scroll-trigger":
@@ -199,7 +203,10 @@ def render_results(state_dict: dict) -> object:
         raise PreventUpdate
     state = AppState.from_dict(state_dict)
     return build_invoice_results(
-        deserialize_page(state_dict), state.query, state.has_more
+        deserialize_page(state_dict),
+        state.query,
+        state.has_more,
+        genie_table=state.genie_table,
     )
 
 

@@ -155,8 +155,23 @@ def serialize_invoice(invoice: Invoice) -> dict:
     return data
 
 
-def serialize_page(page: InvoicePage, query: str = "", scroll_token: int = 0) -> dict:
-    """Serialize an InvoicePage to a JSON-compatible dictionary for dcc.Store."""
+def serialize_page(
+    page: InvoicePage,
+    query: str = "",
+    scroll_token: int = 0,
+    genie_table: "GenieTableResult | None" = None,
+) -> dict:
+    """
+    Serialize an InvoicePage to a JSON-compatible dictionary for dcc.Store.
+
+    Args:
+        page: The invoice page to serialize.
+        query: The search query string.
+        scroll_token: Token for scroll-based loading.
+        genie_table: Optional Genie table result when no invoices matched.
+    """
+    from invoice_ui.models.common import GenieTableResult
+
     return {
         "items": [serialize_invoice(inv) for inv in page.items],
         "page": page.page,
@@ -165,6 +180,7 @@ def serialize_page(page: InvoicePage, query: str = "", scroll_token: int = 0) ->
         "has_more": page.has_more,
         "query": query,
         "scroll_token": scroll_token,
+        "genie_table": genie_table.to_dict() if genie_table else None,
     }
 
 

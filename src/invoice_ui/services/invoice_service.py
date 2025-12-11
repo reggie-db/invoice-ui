@@ -1,5 +1,6 @@
 from abc import ABC, abstractmethod
 
+from invoice_ui.models.common import GenieTableResult
 from invoice_ui.models.invoice import InvoicePage
 
 """Abstract base classes for invoice data access."""
@@ -30,3 +31,11 @@ class InvoiceService(ABC):
     def ai_available(self) -> bool:
         """Return True if AI-powered search is available."""
         return False
+
+    def get_last_genie_table(self) -> GenieTableResult | None:
+        """Return the last Genie table result from a query without content_hash."""
+        return None
+
+    def clear_genie_table(self) -> None:
+        """Clear any stored Genie table result."""
+        pass
