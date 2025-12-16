@@ -991,3 +991,186 @@ body {
 .genie-query-content .genie-sql {
   margin: 0;
 }
+
+/* AG Grid Wrapper for Genie Results */
+.genie-grid-wrapper {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.genie-ag-grid {
+  width: 100%;
+  min-height: 200px;
+}
+
+/* AG Grid Theme Customization */
+.ag-theme-alpine {
+  --ag-header-background-color: var(--panel-muted);
+  --ag-odd-row-background-color: var(--panel);
+  --ag-row-hover-color: var(--accent);
+  --ag-selected-row-background-color: var(--accent);
+  --ag-font-family: var(--font-family);
+  --ag-font-size: 0.9rem;
+  --ag-header-font-weight: 600;
+  --ag-border-color: var(--border);
+  --ag-cell-horizontal-padding: 16px;
+  --ag-header-column-resize-handle-color: var(--primary);
+}
+
+.ag-theme-alpine .ag-header-cell {
+  color: var(--text);
+}
+
+.ag-theme-alpine .ag-cell {
+  color: var(--text);
+}
+
+.ag-theme-alpine .ag-paging-panel {
+  border-top: 1px solid var(--border);
+  color: var(--muted);
+  padding: 12px 16px;
+}
+
+/* Genie Export Buttons */
+.genie-export-buttons {
+  display: flex;
+  justify-content: flex-end;
+  padding: 16px 24px;
+  border-top: 1px solid var(--border);
+  background: var(--panel-muted);
+}
+
+.export-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 18px;
+  font-size: 0.9rem;
+  font-weight: 500;
+  font-family: var(--font-family);
+  color: var(--primary);
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: background 150ms ease, border-color 150ms ease, color 150ms ease;
+}
+
+.export-button:hover {
+  background: var(--accent);
+  border-color: var(--primary);
+  color: var(--primary-dark);
+}
+
+.export-button:active {
+  background: var(--panel-muted);
+}
+
+/* SQL Code Highlighting Container */
+.sql-code-container {
+  position: relative;
+}
+
+.sql-code-block {
+  margin: 0;
+  padding: 0;
+  background: transparent;
+  overflow-x: auto;
+}
+
+.sql-code-block code {
+  display: block;
+  padding: 16px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  font-family: var(--font-mono);
+  font-size: 0.85rem;
+  line-height: 1.6;
+  tab-size: 2;
+  overflow-x: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* Override highlight.js github theme colors for light mode */
+.sql-code-block code.hljs {
+  background: #f8f9fa;
+  color: var(--text);
+}
+
+/* Dark theme SQL block (for contrast when inside gradient backgrounds) */
+.genie-query-section-content .sql-code-block code {
+  background: #2d3748;
+  color: #e2e8f0;
+  border-color: #4a5568;
+}
+
+.genie-query-section-content .sql-code-block code.hljs {
+  background: #2d3748;
+}
+
+/* Highlight.js SQL keywords styling */
+.hljs-keyword {
+  color: #0369a1;
+  font-weight: 600;
+}
+
+.hljs-string {
+  color: #047857;
+}
+
+.hljs-number {
+  color: #b45309;
+}
+
+.hljs-built_in {
+  color: #7c3aed;
+}
+
+.hljs-comment {
+  color: #6b7280;
+  font-style: italic;
+}
+
+.hljs-operator {
+  color: #dc2626;
+}
+
+/* Dark theme overrides for highlight.js */
+.genie-query-section-content .hljs-keyword {
+  color: #7dd3fc;
+}
+
+.genie-query-section-content .hljs-string {
+  color: #6ee7b7;
+}
+
+.genie-query-section-content .hljs-number {
+  color: #fcd34d;
+}
+
+.genie-query-section-content .hljs-built_in {
+  color: #c4b5fd;
+}
+
+.genie-query-section-content .hljs-comment {
+  color: #9ca3af;
+}
+
+.genie-query-section-content .hljs-operator {
+  color: #f87171;
+}
+
+/* Query section content styling */
+.genie-query-section-content {
+  padding: 16px 24px;
+}
+
+/* Summary icon styling in details */
+.genie-query-details summary {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}

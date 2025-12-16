@@ -49,6 +49,12 @@ def build_layout(ai_available: bool = False) -> html.Div:
             # WebSocket for real-time status updates
             dcc.Store(id="ws-url-store", data={"path": _WS_PATH}),
             WebSocket(id="genie-ws", url=""),
+            # Hidden placeholder for Genie export button (callback target)
+            html.Button(
+                id="genie-export-csv-btn",
+                style={"display": "none"},
+                n_clicks=0,
+            ),
             html.Div(
                 className="app-container",
                 children=[

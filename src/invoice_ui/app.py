@@ -79,7 +79,7 @@ _FONT_URL = (
     else "https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&family=Source+Sans+3:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&display=swap"
 )
 
-# Set custom index string with fonts
+# Set custom index string with fonts and syntax highlighting
 app.index_string = f"""<!DOCTYPE html>
 <html>
     <head>
@@ -89,6 +89,7 @@ app.index_string = f"""<!DOCTYPE html>
         <link rel="preconnect" href="https://fonts.googleapis.com">
         <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
         <link href="{_FONT_URL}" rel="stylesheet">
+        <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css">
         {{%css%}}
     </head>
     <body class="{_THEME_CLASS}">
@@ -97,6 +98,23 @@ app.index_string = f"""<!DOCTYPE html>
             {{%config%}}
             {{%scripts%}}
             {{%renderer%}}
+            <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+            <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/sql.min.js"></script>
+            <script>
+                // Auto-highlight SQL code blocks when DOM changes
+                const observer = new MutationObserver(() => {{
+                    document.querySelectorAll('code.language-sql:not(.hljs)').forEach((el) => {{
+                        hljs.highlightElement(el);
+                    }});
+                }});
+                observer.observe(document.body, {{ childList: true, subtree: true }});
+                // Initial highlight
+                document.addEventListener('DOMContentLoaded', () => {{
+                    document.querySelectorAll('code.language-sql').forEach((el) => {{
+                        hljs.highlightElement(el);
+                    }});
+                }});
+            </script>
         </footer>
     </body>
 </html>"""
@@ -500,6 +518,32 @@ app.clientside_callback(
     """,
     Output("download-trigger", "data", allow_duplicate=True),
     Input("download-file", "data"),
+    prevent_initial_call=True,
+)
+
+
+# Export AG Grid to CSV when export button is clicked
+app.clientside_callback(
+    """
+    function(n_clicks) {
+        if (!n_clicks || n_clicks <= 0) {
+            return window.dash_clientside.no_update;
+        }
+        try {
+            const gridApi = dash_ag_grid.getApi('genie-results-grid');
+            if (gridApi) {
+                gridApi.exportDataAsCsv({
+                    fileName: 'genie_results.csv'
+                });
+            }
+        } catch (e) {
+            console.warn('AG Grid export failed:', e);
+        }
+        return window.dash_clientside.no_update;
+    }
+    """,
+    Output("genie-export-csv-btn", "n_clicks", allow_duplicate=True),
+    Input("genie-export-csv-btn", "n_clicks"),
     prevent_initial_call=True,
 )
 
