@@ -195,8 +195,8 @@ class InvoiceServiceImpl(InvoiceService):
         """
         Use Genie AI to get content hashes matching the query.
 
-        If Genie returns a query without content_hash but with other data,
-        stores the result in _last_genie_table for display.
+        Always stores the SQL query in _last_genie_table for display.
+        If no content_hash column is found, also stores the raw table data.
         """
         if not self.ai_available:
             return None
@@ -207,7 +207,7 @@ class InvoiceServiceImpl(InvoiceService):
         cache_key = objects.hash([self._genie_context()[1], query]).hexdigest()
 
         def _load() -> dict:
-            """Load and return both content_hashes and potential table data."""
+            """Load and return both content_hashes and query info."""
             result = {"content_hashes": None, "genie_table": None}
             try:
                 genie_service, conversation_id = self._genie_context()
@@ -236,6 +236,19 @@ class InvoiceServiceImpl(InvoiceService):
                                 ]
                                 if content_hashes:
                                     result["content_hashes"] = content_hashes
+                                    # Store the query info even when content_hash found
+                                    result["genie_table"] = {
+                                        "columns": columns,
+                                        "rows": [],  # No raw data needed
+                                        "query": response_query,
+                                        "description": genie_description,
+                                        "has_content_hash": True,
+                                    }
+                                    LOG.info(
+                                        "Found %d content hashes, query: %s",
+                                        len(content_hashes),
+                                        response_query[:100],
+                                    )
                                     return result
                             else:
                                 # No content_hash, capture as raw table data
@@ -249,6 +262,7 @@ class InvoiceServiceImpl(InvoiceService):
                                         "rows": table_rows,
                                         "query": response_query,
                                         "description": genie_description,
+                                        "has_content_hash": False,
                                     }
                                     LOG.info(
                                         "Captured Genie table with %d rows, columns: %s",
@@ -283,8 +297,14 @@ class InvoiceServiceImpl(InvoiceService):
                 rows=genie_table_data.get("rows", []),
                 query=genie_table_data.get("query", ""),
                 description=genie_table_data.get("description", ""),
+                has_content_hash=genie_table_data.get("has_content_hash", False),
             )
-            LOG.info("Stored Genie table result with %d rows", len(self._last_genie_table.rows))
+            LOG.info(
+                "Stored Genie result: %d rows, has_content_hash=%s, query=%s",
+                len(self._last_genie_table.rows),
+                self._last_genie_table.has_content_hash,
+                self._last_genie_table.query[:100] if self._last_genie_table.query else "",
+            )
 
         LOG.info("Content hashes: %s", content_hashes)
         return content_hashes

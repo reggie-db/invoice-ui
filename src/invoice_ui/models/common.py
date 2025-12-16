@@ -14,19 +14,35 @@ be shared with other applications in the future.
 @dataclass
 class GenieTableResult:
     """
-    Holds raw table data from a Genie query when no content_hash column is found.
+    Holds Genie query information and optionally raw table data.
+
+    Used both for:
+    - Storing the SQL query when content_hash filtering is applied (rows empty)
+    - Storing full table data when no content_hash column is found
 
     Attributes:
         columns: List of column names.
-        rows: List of row dictionaries.
+        rows: List of row dictionaries (empty when content_hash found).
         query: The SQL query that was executed.
         description: Optional description from Genie about the results.
+        has_content_hash: True if the query returned content_hash for filtering.
     """
 
     columns: list[str] = field(default_factory=list)
     rows: list[dict[str, Any]] = field(default_factory=list)
     query: str = ""
     description: str = ""
+    has_content_hash: bool = False
+
+    @property
+    def has_table_data(self) -> bool:
+        """Check if there is actual table data to display."""
+        return len(self.rows) > 0
+
+    @property
+    def has_query(self) -> bool:
+        """Check if there is a SQL query to display."""
+        return bool(self.query)
 
     def to_dict(self) -> dict:
         """Serialize to JSON-compatible dictionary."""
@@ -35,6 +51,7 @@ class GenieTableResult:
             "rows": self.rows,
             "query": self.query,
             "description": self.description,
+            "has_content_hash": self.has_content_hash,
         }
 
     @classmethod
@@ -47,6 +64,7 @@ class GenieTableResult:
             rows=data.get("rows", []),
             query=data.get("query", ""),
             description=data.get("description", ""),
+            has_content_hash=data.get("has_content_hash", False),
         )
 
 
@@ -118,7 +136,12 @@ class AppState:
     @property
     def has_genie_table(self) -> bool:
         """Check if there are Genie table results to display."""
-        return self.genie_table is not None and len(self.genie_table.rows) > 0
+        return self.genie_table is not None and self.genie_table.has_table_data
+
+    @property
+    def has_genie_query(self) -> bool:
+        """Check if there is a Genie SQL query to display."""
+        return self.genie_table is not None and self.genie_table.has_query
 
     def to_dict(self) -> dict:
         """Serialize state to JSON-compatible dictionary."""

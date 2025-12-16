@@ -1,7 +1,7 @@
 from dash import html
 from dash_iconify import DashIconify
 
-from invoice_ui.components.genie_table import build_genie_table
+from invoice_ui.components.genie_table import build_genie_query_details, build_genie_table
 from invoice_ui.components.invoice_card import build_invoice_card
 from invoice_ui.models.common import GenieTableResult
 from invoice_ui.models.invoice import InvoicePage
@@ -72,6 +72,13 @@ def build_invoice_results(
                 ),
             ],
         ),
+    ]
+
+    # Show Genie query details if available (when AI search was used)
+    if genie_table and genie_table.query:
+        results_children.append(build_genie_query_details(genie_table))
+
+    results_children.append(
         html.Div(
             className="stack",
             children=[
@@ -79,7 +86,7 @@ def build_invoice_results(
                 for invoice in invoices
             ],
         ),
-    ]
+    )
 
     # Loading indicator for infinite scroll
     results_children.append(
