@@ -249,13 +249,13 @@ body {
 }
 
 /* Active state when AI is enabled (checkbox is checked) */
-.ai-toggle-checklist input[type="checkbox"]:checked ~ .ai-toggle-button,
+.ai-toggle-checklist input[type="checkbox"]:checked~.ai-toggle-button,
 .ai-toggle-checklist label:has(input:checked) .ai-toggle-button {
   background: var(--primary);
   color: #fff;
 }
 
-.ai-toggle-checklist input[type="checkbox"]:checked ~ .ai-toggle-button:hover,
+.ai-toggle-checklist input[type="checkbox"]:checked~.ai-toggle-button:hover,
 .ai-toggle-checklist label:has(input:checked) .ai-toggle-button:hover {
   background: var(--primary-hover);
   color: #fff;
@@ -523,8 +523,13 @@ body {
 }
 
 @keyframes download-spin {
-  from { transform: rotate(0deg); }
-  to { transform: rotate(360deg); }
+  from {
+    transform: rotate(0deg);
+  }
+
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 /* Load more / infinite scroll styles */
@@ -760,7 +765,9 @@ body {
 }
 
 @keyframes loading-spin {
-  to { transform: rotate(360deg); }
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .empty-icon {
@@ -813,8 +820,8 @@ body {
 }
 
 .genie-table-info {
-  padding: 24px 28px;
-  border-bottom: 1px solid var(--border);
+  padding: 24px 28px 20px;
+  border-bottom: none;
   background: var(--genie-gradient);
 }
 
@@ -822,20 +829,25 @@ body {
   display: flex;
   align-items: center;
   gap: 12px;
-  margin-bottom: 12px;
+  margin-bottom: 8px;
 }
 
 .genie-table-header h3 {
   margin: 0;
-  font-size: 1.15rem;
+  font-size: 1.25rem;
   font-weight: 600;
-  color: var(--text);
+  color: var(--primary-dark);
 }
 
 .genie-icon {
-  width: 24px;
-  height: 24px;
+  width: 26px;
+  height: 26px;
   color: var(--primary);
+  filter: drop-shadow(0 2px 4px rgba(207, 46, 46, 0.2));
+}
+
+body.theme-generic .genie-icon {
+  filter: drop-shadow(0 2px 4px rgba(3, 105, 161, 0.2));
 }
 
 .genie-query-text {
@@ -895,21 +907,28 @@ body {
 }
 
 .genie-query-details {
-  padding: 16px 28px;
+  padding: 0;
   border-top: 1px solid var(--border);
-  background: var(--panel-muted);
+  background: var(--panel);
 }
 
 .genie-query-details summary {
   cursor: pointer;
   color: var(--primary);
-  font-weight: 500;
+  font-weight: 600;
   font-size: 0.9rem;
-  padding: 4px 0;
+  padding: 14px 20px;
+  transition: background 150ms ease;
 }
 
 .genie-query-details summary:hover {
   color: var(--primary-hover);
+  background: var(--panel-muted);
+}
+
+.genie-query-details[open] summary {
+  border-bottom: 1px solid var(--border);
+  background: var(--panel-muted);
 }
 
 .genie-sql {
@@ -996,7 +1015,10 @@ body {
 .genie-grid-wrapper {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 0;
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  border: 1px solid var(--border);
 }
 
 .genie-ag-grid {
@@ -1004,41 +1026,150 @@ body {
   min-height: 200px;
 }
 
-/* AG Grid Theme Customization */
-.ag-theme-alpine {
+/* AG Grid Theme Customization - Matching App Branding */
+.genie-ag-grid.ag-theme-alpine {
+  /* Core colors */
+  --ag-background-color: var(--panel);
+  --ag-foreground-color: var(--text);
   --ag-header-background-color: var(--panel-muted);
+  --ag-header-foreground-color: var(--primary-dark);
   --ag-odd-row-background-color: var(--panel);
   --ag-row-hover-color: var(--accent);
   --ag-selected-row-background-color: var(--accent);
+
+  /* Typography */
   --ag-font-family: var(--font-family);
   --ag-font-size: 0.9rem;
   --ag-header-font-weight: 600;
+
+  /* Borders */
   --ag-border-color: var(--border);
+  --ag-row-border-color: var(--border);
+  --ag-header-column-separator-color: var(--border);
+
+  /* Spacing */
   --ag-cell-horizontal-padding: 16px;
+  --ag-header-height: 48px;
+  --ag-row-height: 44px;
+
+  /* Interactive elements */
   --ag-header-column-resize-handle-color: var(--primary);
+  --ag-input-focus-border-color: var(--primary);
+  --ag-checkbox-checked-color: var(--primary);
+  --ag-range-selection-border-color: var(--primary);
+
+  /* Remove default borders that conflict with wrapper */
+  border: none;
+  border-radius: 0;
 }
 
-.ag-theme-alpine .ag-header-cell {
+.genie-ag-grid.ag-theme-alpine .ag-root-wrapper {
+  border: none;
+  border-radius: 0;
+}
+
+.genie-ag-grid.ag-theme-alpine .ag-header {
+  border-bottom: 2px solid var(--border-strong);
+}
+
+.genie-ag-grid.ag-theme-alpine .ag-header-cell {
+  color: var(--primary-dark);
+  font-weight: 600;
+}
+
+.genie-ag-grid.ag-theme-alpine .ag-header-cell:hover {
+  background-color: var(--accent);
+}
+
+.genie-ag-grid.ag-theme-alpine .ag-cell {
   color: var(--text);
+  line-height: 1.5;
 }
 
-.ag-theme-alpine .ag-cell {
-  color: var(--text);
+.genie-ag-grid.ag-theme-alpine .ag-row:hover {
+  background-color: var(--accent);
 }
 
-.ag-theme-alpine .ag-paging-panel {
+.genie-ag-grid.ag-theme-alpine .ag-row-odd {
+  background-color: rgba(255, 245, 245, 0.5);
+}
+
+body.theme-generic .genie-ag-grid.ag-theme-alpine .ag-row-odd {
+  background-color: rgba(241, 245, 249, 0.5);
+}
+
+/* Pagination panel styling */
+.genie-ag-grid.ag-theme-alpine .ag-paging-panel {
   border-top: 1px solid var(--border);
   color: var(--muted);
   padding: 12px 16px;
+  background: var(--panel-muted);
+  font-weight: 500;
+}
+
+.genie-ag-grid.ag-theme-alpine .ag-paging-button {
+  color: var(--primary);
+  cursor: pointer;
+}
+
+.genie-ag-grid.ag-theme-alpine .ag-paging-button:hover {
+  color: var(--primary-hover);
+}
+
+.genie-ag-grid.ag-theme-alpine .ag-paging-button.ag-disabled {
+  color: var(--muted);
+  opacity: 0.5;
+}
+
+/* Filter input styling */
+.genie-ag-grid.ag-theme-alpine .ag-filter-toolpanel-search input,
+.genie-ag-grid.ag-theme-alpine .ag-text-field-input {
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--input-bg);
+  color: var(--text);
+  font-family: var(--font-family);
+}
+
+.genie-ag-grid.ag-theme-alpine .ag-text-field-input:focus {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px var(--focus-ring);
+}
+
+/* Popup menu styling */
+.ag-theme-alpine .ag-menu {
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow-sm);
+  background: var(--panel);
+}
+
+.ag-theme-alpine .ag-menu-option-active {
+  background: var(--accent);
+}
+
+/* Sort icon styling */
+.genie-ag-grid.ag-theme-alpine .ag-icon-asc,
+.genie-ag-grid.ag-theme-alpine .ag-icon-desc {
+  color: var(--primary);
+}
+
+/* Column resize handle */
+.genie-ag-grid.ag-theme-alpine .ag-header-cell-resize::after {
+  background-color: var(--border);
+}
+
+.genie-ag-grid.ag-theme-alpine .ag-header-cell-resize:hover::after {
+  background-color: var(--primary);
 }
 
 /* Genie Export Buttons */
 .genie-export-buttons {
   display: flex;
   justify-content: flex-end;
-  padding: 16px 24px;
-  border-top: 1px solid var(--border);
+  padding: 14px 20px;
   background: var(--panel-muted);
+  border-top: none;
 }
 
 .export-button {
@@ -1046,25 +1177,26 @@ body {
   align-items: center;
   gap: 8px;
   padding: 10px 18px;
-  font-size: 0.9rem;
-  font-weight: 500;
+  font-size: 0.875rem;
+  font-weight: 600;
   font-family: var(--font-family);
-  color: var(--primary);
-  background: var(--panel);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
+  color: #fff;
+  background: var(--primary);
+  border: none;
+  border-radius: 10px;
   cursor: pointer;
-  transition: background 150ms ease, border-color 150ms ease, color 150ms ease;
+  transition: background 150ms ease, transform 140ms ease, box-shadow 140ms ease;
 }
 
 .export-button:hover {
-  background: var(--accent);
-  border-color: var(--primary);
-  color: var(--primary-dark);
+  background: var(--primary-hover);
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-spinner);
 }
 
 .export-button:active {
-  background: var(--panel-muted);
+  background: var(--primary-dark);
+  transform: translateY(0);
 }
 
 /* SQL Code Highlighting Container */
@@ -1081,13 +1213,13 @@ body {
 
 .sql-code-block code {
   display: block;
-  padding: 16px;
-  background: var(--panel);
+  padding: 18px 20px;
+  background: var(--panel-muted);
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   font-family: var(--font-mono);
   font-size: 0.85rem;
-  line-height: 1.6;
+  line-height: 1.7;
   tab-size: 2;
   overflow-x: auto;
   white-space: pre-wrap;
@@ -1096,71 +1228,96 @@ body {
 
 /* Override highlight.js github theme colors for light mode */
 .sql-code-block code.hljs {
-  background: #f8f9fa;
+  background: var(--panel-muted);
   color: var(--text);
 }
 
 /* Dark theme SQL block (for contrast when inside gradient backgrounds) */
 .genie-query-section-content .sql-code-block code {
-  background: #2d3748;
-  color: #e2e8f0;
-  border-color: #4a5568;
+  background: #1e1e2e;
+  color: #cdd6f4;
+  border-color: #313244;
 }
 
 .genie-query-section-content .sql-code-block code.hljs {
-  background: #2d3748;
+  background: #1e1e2e;
 }
 
-/* Highlight.js SQL keywords styling */
+/* Highlight.js SQL keywords styling - matches brand */
 .hljs-keyword {
-  color: #0369a1;
+  color: var(--primary);
   font-weight: 600;
 }
 
 .hljs-string {
-  color: #047857;
+  color: #059669;
 }
 
 .hljs-number {
-  color: #b45309;
+  color: #d97706;
 }
 
 .hljs-built_in {
-  color: #7c3aed;
+  color: var(--primary-dark);
+  font-weight: 500;
 }
 
 .hljs-comment {
-  color: #6b7280;
+  color: var(--muted);
   font-style: italic;
 }
 
 .hljs-operator {
-  color: #dc2626;
+  color: var(--primary-hover);
 }
 
-/* Dark theme overrides for highlight.js */
+.hljs-literal {
+  color: #7c3aed;
+}
+
+/* Generic theme overrides */
+body.theme-generic .hljs-keyword {
+  color: var(--primary);
+}
+
+body.theme-generic .hljs-built_in {
+  color: var(--primary-dark);
+}
+
+body.theme-generic .hljs-operator {
+  color: var(--primary-hover);
+}
+
+/* Dark theme overrides for highlight.js (Catppuccin-inspired) */
 .genie-query-section-content .hljs-keyword {
-  color: #7dd3fc;
+  color: #cba6f7;
+  font-weight: 600;
 }
 
 .genie-query-section-content .hljs-string {
-  color: #6ee7b7;
+  color: #a6e3a1;
 }
 
 .genie-query-section-content .hljs-number {
-  color: #fcd34d;
+  color: #fab387;
 }
 
 .genie-query-section-content .hljs-built_in {
-  color: #c4b5fd;
+  color: #89dceb;
+  font-weight: 500;
 }
 
 .genie-query-section-content .hljs-comment {
-  color: #9ca3af;
+  color: #6c7086;
+  font-style: italic;
 }
 
 .genie-query-section-content .hljs-operator {
-  color: #f87171;
+  color: #f38ba8;
+}
+
+.genie-query-section-content .hljs-literal {
+  color: #f9e2af;
 }
 
 /* Query section content styling */

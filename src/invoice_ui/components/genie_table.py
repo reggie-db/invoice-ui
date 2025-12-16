@@ -6,8 +6,8 @@ are displayed using AG Grid with export capabilities. SQL queries are
 displayed with syntax highlighting.
 """
 
-from dash import html
 import dash_ag_grid as dag
+from dash import html
 from dash_iconify import DashIconify
 
 from invoice_ui.models.common import GenieTableResult
@@ -132,18 +132,17 @@ def _build_header(genie_table: GenieTableResult, query: str | None) -> html.Div:
         ),
     ]
 
-    if query:
-        children.append(
-            html.P(
-                f'Results for: "{query}"',
-                className="genie-query-text",
-            )
-        )
+    # Only show description if it's meaningfully different from the query
+    description = genie_table.description
+    if description and query:
+        # Skip description if it's essentially the same as the query
+        if description.strip().lower() == query.strip().lower():
+            description = None
 
-    if genie_table.description:
+    if description:
         children.append(
             html.P(
-                genie_table.description,
+                description,
                 className="genie-description",
             )
         )
