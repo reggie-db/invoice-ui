@@ -1,9 +1,19 @@
 """
-Genie table component for displaying raw AI query results.
+Genie table component for displaying AI query results.
 
-When Genie returns a query without content_hash column, the results
-are displayed using AG Grid with export capabilities. SQL queries are
-displayed with syntax highlighting.
+When Databricks Genie returns data that doesn't include content_hash values
+(meaning it can't filter invoices directly), the results are displayed in
+an interactive AG Grid table with:
+
+- Sortable and filterable columns
+- Pagination for large result sets
+- CSV export functionality
+- SQL syntax highlighting for the generated query
+
+Components:
+- build_genie_table(): Full table display with header, grid, and query
+- build_genie_query_details(): Collapsible SQL query card (used when invoices shown)
+- build_sql_code_block(): Syntax-highlighted SQL code block
 """
 
 import dash_ag_grid as dag
@@ -11,8 +21,6 @@ from dash import html
 from dash_iconify import DashIconify
 
 from invoice_ui.models.common import GenieTableResult
-
-"""Component for displaying Genie AI query results in a table format."""
 
 
 def build_sql_code_block(sql: str) -> html.Div:
@@ -249,16 +257,36 @@ def _build_query_section(genie_table: GenieTableResult) -> html.Div:
 
 
 def _format_column_name(column: str) -> str:
-    """Format a column name for display (snake_case to Title Case)."""
+    """
+    Format a column name for display in AG Grid header.
+
+    Converts snake_case to Title Case for better readability.
+
+    Args:
+        column: Raw column name from DataFrame.
+
+    Returns:
+        Human-readable column header string.
+    """
     return column.replace("_", " ").title()
 
 
 def _format_cell_value(value) -> str:
-    """Format a cell value for display."""
+    """
+    Format a cell value for display in AG Grid.
+
+    Handles None, floats (with thousand separators), and complex types.
+
+    Args:
+        value: Raw cell value from DataFrame row.
+
+    Returns:
+        String representation suitable for display.
+    """
     if value is None:
         return ""
     if isinstance(value, float):
-        # Format numbers with reasonable precision
+        # Format whole numbers without decimals, others with 2 decimal places
         if value == int(value):
             return str(int(value))
         return f"{value:,.2f}"

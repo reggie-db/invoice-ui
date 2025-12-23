@@ -1,3 +1,17 @@
+"""
+Invoice card component for displaying detailed invoice information.
+
+Renders a rich card layout showing:
+- Header with invoice number, date, amount, and download button
+- Order details (PO, SO, due date)
+- Party information (seller, buyer, ship-to)
+- Collapsible line items with serial numbers
+- Totals breakdown (subtotal, shipping, tax, total)
+
+The card follows a consistent visual design with icons, badges,
+and responsive grid layouts.
+"""
+
 from typing import Sequence
 
 from dash import html
@@ -6,11 +20,18 @@ from dash_iconify import DashIconify
 from invoice_ui.models.invoice import Invoice, LineItem, Party, ShipTo
 from invoice_ui.utils import format_currency
 
-"""Reusable invoice card component."""
-
 
 def build_invoice_card(invoice: Invoice, card_id: str | None = None) -> html.Div:
-    """Return a card styled container for a specific invoice."""
+    """
+    Build a complete invoice card component.
+
+    Args:
+        invoice: Invoice data model to display.
+        card_id: Optional custom ID; defaults to 'invoice-{invoice_number}'.
+
+    Returns:
+        Dash html.Div containing the styled invoice card.
+    """
     invoice_id = card_id or f"invoice-{invoice.invoice.invoice_number}"
     return html.Div(
         id=invoice_id,
@@ -23,7 +44,7 @@ def build_invoice_card(invoice: Invoice, card_id: str | None = None) -> html.Div
 
 
 def _build_header(invoice: Invoice, invoice_id: str) -> html.Div:
-    """Return the card header area."""
+    """Build the card header with title, metadata, and download button."""
     return html.Div(
         className="card-header",
         children=[

@@ -1,3 +1,15 @@
+"""
+Demo implementation of InvoiceService using static in-memory data.
+
+This service is useful for:
+- Local development without Databricks access
+- Testing UI components with realistic data
+- Demonstrating the application without cloud dependencies
+
+The demo service supports infinite scroll by generating virtual invoice
+copies with modified identifiers, simulating a large dataset.
+"""
+
 import time
 from typing import Sequence
 
@@ -7,16 +19,28 @@ from invoice_ui.models.invoice import Invoice, InvoicePage
 from invoice_ui.services.invoice_service import InvoiceService
 from invoice_ui.utils import matches_query, virtual_slice
 
-"""Demo implementation of the InvoiceService that ships with static data."""
-
 
 class DemoInvoiceService(InvoiceService):
-    """Provides in memory invoice filtering backed by the demo dataset."""
+    """
+    In-memory invoice service backed by static demo data.
+
+    Provides realistic invoice search functionality without requiring
+    Databricks connectivity. Supports text-based filtering and simulates
+    infinite scroll with virtual invoice generation.
+
+    Attributes:
+        _VIRTUAL_TOTAL: Simulated total count for infinite scroll demo.
+    """
 
     _VIRTUAL_TOTAL = 10000
 
     def __init__(self, invoices: Sequence[Invoice] | None = None) -> None:
-        """Initialize the service with the provided invoices or the default set."""
+        """
+        Initialize with invoice data.
+
+        Args:
+            invoices: Custom invoice list, or None to use DEMO_INVOICES.
+        """
         self._invoices: Sequence[Invoice] = invoices or DEMO_INVOICES
 
     @property
@@ -31,7 +55,22 @@ class DemoInvoiceService(InvoiceService):
         page_size: int = 10,
         use_ai: bool = True,
     ) -> InvoicePage:
-        """Return a paginated slice of invoices that match the optional query."""
+        """
+        Return a paginated slice of invoices that match the optional query.
+
+        When no query is provided, returns virtual invoices from the demo
+        dataset to simulate infinite scroll. With a query, performs text
+        matching against searchable invoice fields.
+
+        Args:
+            query: Optional text to filter invoices.
+            page: Page number (1-indexed).
+            page_size: Number of items per page.
+            use_ai: Ignored (demo service has no AI support).
+
+        Returns:
+            InvoicePage with matching invoices and pagination metadata.
+        """
         # Broadcast demo status via WebSocket (only if searching)
         if query and query.strip():
             _broadcast_demo_status(query)

@@ -1,3 +1,26 @@
+"""
+WebSocket server for broadcasting Genie AI status updates.
+
+Adds WebSocket support to the Dash/Flask application using flask-sock,
+allowing real-time status updates during AI-powered searches without
+additional infrastructure.
+
+Architecture:
+- Single /ws/genie endpoint on the same port as the HTTP server
+- Connected clients stored in a thread-safe set
+- Status updates broadcast to all connected clients
+- Automatic cleanup on client disconnect
+
+Usage:
+    # In app.py
+    from invoice_ui.ws_server import init_websocket, broadcast_genie_status
+
+    init_websocket(app.server)
+
+    # In service code
+    broadcast_genie_status({"active": True, "status": "Processing..."})
+"""
+
 import json
 from collections.abc import Set
 from threading import Lock
@@ -6,12 +29,6 @@ from flask import Flask
 from flask_sock import Sock
 from reggie_core import logs
 from simple_websocket import Server as WebSocketServer
-
-"""
-WebSocket integration for broadcasting Genie AI status updates.
-
-Uses flask-sock to add WebSocket support to the Dash/Flask server on the same port.
-"""
 
 LOG = logs.logger(__file__)
 

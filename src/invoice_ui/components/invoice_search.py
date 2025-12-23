@@ -1,16 +1,29 @@
+"""
+Invoice search panel component.
+
+Provides the search input with:
+- Icon-prefixed text input with debounce
+- Optional AI toggle button (when Genie is configured)
+- Real-time Genie status indicator (hidden by default)
+
+The search input uses Dash's debounce feature to avoid excessive
+server callbacks while the user types.
+"""
+
 from dash import dcc, html
 from dash_iconify import DashIconify
-
-"""Invoice search input that mirrors the React design."""
 
 
 def build_search_panel(initial_value: str = "", ai_available: bool = False) -> html.Div:
     """
-    Return the search container with the query input.
+    Build the search panel with input and optional AI toggle.
 
     Args:
-        initial_value: Pre-populated search query.
-        ai_available: Whether AI-powered search is available (shows toggle if True).
+        initial_value: Pre-populated search query (from URL hash).
+        ai_available: If True, shows the AI search toggle button.
+
+    Returns:
+        Card-styled div containing the search UI elements.
     """
     input_children = [
         DashIconify(icon="lucide:search", className="input-icon"),

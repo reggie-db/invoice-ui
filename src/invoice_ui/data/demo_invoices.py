@@ -1,3 +1,17 @@
+"""
+Demo invoice fixtures for development and testing.
+
+Contains a small set of realistic Invoice objects representing hardware
+purchases. The data includes various scenarios:
+- Single and multiple line items
+- With and without serial numbers
+- Different payment terms and due dates
+- Various vendors and buyers
+
+These fixtures are used by DemoInvoiceService and can be extended for
+additional test scenarios.
+"""
+
 from datetime import datetime
 from typing import Sequence
 
@@ -10,8 +24,6 @@ from invoice_ui.models.invoice import (
     ShipTo,
     Totals,
 )
-
-"""Demo invoice data that mirrors the original React implementation."""
 
 DEMO_INVOICES: Sequence[Invoice] = [
     Invoice(

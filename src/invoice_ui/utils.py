@@ -1,4 +1,12 @@
-"""Helper functions for invoice processing and formatting."""
+"""
+Utility functions for invoice data manipulation and formatting.
+
+Provides helpers for:
+- Date parsing (multiple formats supported)
+- Currency formatting
+- Search query matching against invoice fields
+- Virtual invoice generation for infinite scroll demo
+"""
 
 from dataclasses import replace
 from datetime import datetime
@@ -6,8 +14,6 @@ from typing import TYPE_CHECKING, Sequence
 
 if TYPE_CHECKING:
     from invoice_ui.models.invoice import Invoice
-
-"""Utility functions for invoice data manipulation and formatting."""
 
 
 def parse_date(date_str: str | None) -> datetime | None:
@@ -47,12 +53,33 @@ def parse_date(date_str: str | None) -> datetime | None:
 
 
 def format_currency(value: float, currency: str) -> str:
-    """Format a currency amount using the currency symbol."""
+    """
+    Format a currency amount with the currency code prefix.
+
+    Args:
+        value: Numeric amount to format.
+        currency: Currency code (e.g., 'USD', 'EUR').
+
+    Returns:
+        Formatted string like 'USD 1,234.56'.
+    """
     return f"{currency} {value:,.2f}"
 
 
 def matches_query(invoice: "Invoice", query: str) -> bool:
-    """Check if an invoice matches the search query."""
+    """
+    Check if an invoice matches the search query.
+
+    Performs case-insensitive substring matching against all
+    searchable terms from the invoice (numbers, names, serial numbers).
+
+    Args:
+        invoice: Invoice to check.
+        query: Search query string.
+
+    Returns:
+        True if query matches any searchable term, or if query is empty.
+    """
     normalized = query.strip().lower()
     if not normalized:
         return True
@@ -64,7 +91,21 @@ def virtual_slice(
     start: int,
     end: int,
 ) -> Sequence["Invoice"]:
-    """Generate a virtual slice of invoices for infinite scroll."""
+    """
+    Generate a virtual slice of invoices for infinite scroll demo.
+
+    Cycles through the base invoice list, creating virtual copies with
+    unique identifiers based on position. Used by demo service to simulate
+    a large dataset from a small set of templates.
+
+    Args:
+        base: Template invoices to cycle through.
+        start: Starting index in the virtual list.
+        end: Ending index (exclusive) in the virtual list.
+
+    Returns:
+        List of virtual invoices with modified identifiers.
+    """
     count = end - start
     base_len = len(base)
     return [
@@ -74,7 +115,19 @@ def virtual_slice(
 
 
 def virtual_invoice(template: "Invoice", index: int) -> "Invoice":
-    """Create a virtual invoice copy with modified identifiers for infinite scroll."""
+    """
+    Create a virtual invoice copy with modified identifiers.
+
+    Used by the demo service to generate unique invoices for infinite
+    scroll from a small set of templates.
+
+    Args:
+        template: Source invoice to copy.
+        index: Virtual index for generating unique suffixes.
+
+    Returns:
+        New Invoice with modified invoice/PO/SO numbers and attention line.
+    """
     suffix = f"-{index + 1:04d}"
     invoice_details = replace(
         template.invoice,

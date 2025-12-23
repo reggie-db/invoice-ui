@@ -1,3 +1,16 @@
+"""
+Invoice results component for rendering search results.
+
+Handles multiple display states:
+- Loading: Spinner during initial load
+- Empty: Message when no invoices match the query
+- Genie Table: AG Grid when AI returns non-invoice data
+- Invoice Cards: Scrollable list of invoice cards
+
+Includes infinite scroll support with a sentinel element that triggers
+additional page loads as the user scrolls.
+"""
+
 from dash import html
 from dash_iconify import DashIconify
 
@@ -5,8 +18,6 @@ from invoice_ui.components.genie_table import build_genie_query_details, build_g
 from invoice_ui.components.invoice_card import build_invoice_card
 from invoice_ui.models.common import GenieTableResult
 from invoice_ui.models.invoice import InvoicePage
-
-"""Helpers that render the invoice result list."""
 
 
 def build_loading_state() -> html.Div:

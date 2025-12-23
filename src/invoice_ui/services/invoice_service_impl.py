@@ -1,3 +1,23 @@
+"""
+Spark-backed implementation of InvoiceService with Databricks Genie AI support.
+
+This module provides the production invoice service that:
+- Reads invoice data from Unity Catalog tables via Spark
+- Integrates with Databricks Genie for natural language queries
+- Broadcasts real-time status updates via WebSocket
+- Caches Genie query results to disk for performance
+
+The service expects invoice data stored as nested JSON in a `value` column,
+with `content_hash` as the unique identifier and `path` pointing to the
+source PDF file in DBFS or Volumes.
+
+Genie Integration:
+- Queries are sent to a configured Genie space
+- If Genie returns content_hash values, they filter the invoice DataFrame
+- If Genie returns other data, it's displayed in an AG Grid table
+- Query results are cached for 5 minutes to avoid redundant API calls
+"""
+
 import functools
 import os
 from datetime import datetime
@@ -24,13 +44,23 @@ from invoice_ui.models.invoice import (
 from invoice_ui.services.invoice_service import InvoiceService
 from invoice_ui.utils import parse_date
 
-"""Spark-backed implementation of InvoiceService with Genie AI support."""
-
 LOG = logs.logger(__file__)
 
 
 def _parse_invoice(b: benedict, path: str) -> Invoice:
-    """Parse a benedict dictionary into an Invoice dataclass."""
+    """
+    Parse a benedict dictionary into an Invoice dataclass.
+
+    Uses benedict for safe nested key access (dot notation) to handle
+    missing or null values gracefully without raising KeyError.
+
+    Args:
+        b: Benedict dict wrapping the invoice JSON structure.
+        path: DBFS/Volumes path to the source PDF file.
+
+    Returns:
+        Fully populated Invoice dataclass.
+    """
     line_items = [
         LineItem(
             description=li.get("description", ""),
@@ -84,11 +114,33 @@ def _parse_invoice(b: benedict, path: str) -> Invoice:
 
 
 class InvoiceServiceImpl(InvoiceService):
-    """Invoice service implementation using Databricks Spark and Genie AI."""
+    """
+    Production invoice service using Databricks Spark and Genie AI.
 
+    Reads invoice data from a Unity Catalog table and optionally uses
+    Databricks Genie for semantic search capabilities. Results are cached
+    to disk to minimize redundant Genie API calls.
+
+    Required Environment Variables:
+        INVOICE_TABLE_NAME: Fully qualified table name (catalog.schema.table)
+
+    Optional Environment Variables:
+        INVOICE_GENIE_SPACE_ID: Genie space ID for AI search
+
+    Attributes:
+        table_name: Unity Catalog table containing invoice data.
+    """
+
+    # Disk cache for Genie query results (5 minute TTL)
     _DISK_CACHE = caches.DiskCache(paths.temp_dir() / "invoice_service_v2")
 
     def __init__(self) -> None:
+        """
+        Initialize the service with table configuration.
+
+        Raises:
+            AssertionError: If INVOICE_TABLE_NAME is not set.
+        """
         self.table_name = os.getenv("INVOICE_TABLE_NAME")
         assert self.table_name, "INVOICE_TABLE_NAME is not set"
         # Stores the last Genie table result when no content_hash was found
@@ -173,7 +225,22 @@ class InvoiceServiceImpl(InvoiceService):
     def _apply_filter(
         self, df: DataFrame, query: str | None, use_ai: bool = True
     ) -> DataFrame:
-        """Apply search filter to DataFrame, using Genie AI if available and enabled."""
+        """
+        Apply search filter to DataFrame, using Genie AI if available and enabled.
+
+        Filter Strategy:
+        1. If no query, return unfiltered DataFrame
+        2. If AI enabled and Genie returns content_hashes, filter by those
+        3. Otherwise, fall back to case-insensitive text search on JSON
+
+        Args:
+            df: Source DataFrame with content_hash, value, and path columns.
+            query: Search query string (whitespace normalized).
+            use_ai: If True and available, use Genie for semantic search.
+
+        Returns:
+            Filtered DataFrame matching the search criteria.
+        """
         if query:
             query = " ".join(query.split())
         if not query:
@@ -195,8 +262,20 @@ class InvoiceServiceImpl(InvoiceService):
         """
         Use Genie AI to get content hashes matching the query.
 
-        Always stores the SQL query in _last_genie_table for display.
-        If no content_hash column is found, also stores the raw table data.
+        Sends the query to Databricks Genie and processes the response:
+        1. If Genie returns content_hash column, extract values for filtering
+        2. If Genie returns other data, store in _last_genie_table for display
+        3. Always store the SQL query for UI display
+
+        Results are cached to disk with a 5-minute TTL keyed by conversation
+        ID and query text.
+
+        Args:
+            query: Natural language query for Genie.
+
+        Returns:
+            List of content_hash strings for filtering, or None if Genie
+            unavailable or returned non-filterable data.
         """
         if not self.ai_available:
             return None
