@@ -32,7 +32,23 @@ _SERVICE_REGISTRY: Dict[str, Callable[[], InvoiceService]] = {
 
 @cache
 def get_invoice_service(kind: str | None = None) -> InvoiceService:
-    """Return the configured invoice service implementation."""
+    """
+    Return the configured invoice service implementation.
+
+    Uses a cached singleton pattern to ensure the same service instance
+    is reused across all callbacks. The implementation is selected based
+    on the kind parameter or INVOICE_UI_SERVICE environment variable.
+
+    Args:
+        kind: Service type ('demo' or 'impl'). If None, reads from
+              INVOICE_UI_SERVICE env var (defaults to 'impl').
+
+    Returns:
+        Configured InvoiceService instance.
+
+    Raises:
+        ValueError: If the specified service kind is not registered.
+    """
     resolved_kind = (kind or os.getenv("INVOICE_UI_SERVICE", "impl")).lower()
     LOG.info("get_invoice_service - kind:%s resolved_kind:%s", kind, resolved_kind)
     try:
