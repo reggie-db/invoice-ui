@@ -1,11 +1,26 @@
+"""
+Invoice domain models and serialization helpers.
+
+This module defines the core invoice data structures that mirror the JSON
+schema stored in Databricks tables. The hierarchy is:
+
+    Invoice
+    ├── InvoiceDetails (number, dates, amounts, terms)
+    ├── Party (seller, buyer)
+    ├── ShipTo (shipping destination with attention line)
+    ├── LineItem[] (products with quantities, prices, serial numbers)
+    └── Totals (subtotal, tax, shipping, total)
+
+Serialization functions convert between dataclasses and JSON-compatible
+dictionaries for storage in dcc.Store and transmission over callbacks.
+"""
+
 from dataclasses import asdict, dataclass
 from datetime import datetime
 from typing import Any, List, Mapping, Sequence
 
 from invoice_ui.models.common import AppState
 from invoice_ui.utils import format_currency, parse_date
-
-"""Dataclasses and helpers that describe invoice data made available to the UI."""
 
 
 @dataclass(slots=True)

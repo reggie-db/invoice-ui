@@ -1,14 +1,21 @@
+"""
+Common state models for the Invoice Search UI application.
+
+This module defines shared state objects that are serialized to dcc.Store
+for client-side persistence. These models handle:
+
+- Application state (pagination, search query, cached items)
+- Genie AI query results (SQL, table data, content hash filtering)
+- WebSocket status messages for real-time updates
+
+All models include to_dict/from_dict methods for JSON serialization
+required by Dash's dcc.Store component.
+"""
+
 from dataclasses import dataclass, field
 from typing import Any
 
 from reggie_tools import genie
-
-"""
-Common state models for the Invoice UI application.
-
-These models are designed for reuse across different features and may
-be shared with other applications in the future.
-"""
 
 
 @dataclass

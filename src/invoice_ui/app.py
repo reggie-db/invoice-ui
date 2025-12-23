@@ -1,3 +1,26 @@
+"""
+Dash application entry point for the Invoice Search UI.
+
+This module initializes the Dash app, registers all callbacks for search,
+pagination, file downloads, and real-time Genie AI status updates via WebSocket.
+
+The application supports two operational modes:
+- Demo mode: Uses static invoice data (INVOICE_UI_USE_LIVE=false)
+- Production mode: Connects to Databricks Spark and optional Genie AI
+
+Key Callbacks:
+- update_invoice_state: Handles search and infinite scroll pagination
+- render_results: Renders invoice cards or Genie table based on state
+- handle_download: Downloads invoice PDFs from DBFS/Volumes
+- update_genie_display: Updates UI based on WebSocket Genie status messages
+
+Client-side callbacks handle:
+- URL fragment sync for shareable search queries
+- Loading states during search
+- Scroll detection for infinite loading
+- AG Grid CSV export
+"""
+
 import io
 import json
 import os
@@ -18,13 +41,6 @@ from invoice_ui.models.invoice import (
 )
 from invoice_ui.services import get_invoice_service
 from invoice_ui.ws_server import init_websocket
-
-"""
-Dash application entry point for the invoice search UI.
-
-This module initializes the Dash app, defines callbacks for search, pagination,
-file downloads, and real-time status updates via WebSocket.
-"""
 
 LOG = logs.logger(__file__)
 
@@ -156,7 +172,28 @@ def update_invoice_state(
     state_dict: dict | None,
     ai_toggle: list | None = None,
 ) -> dict:
-    """Handle initial load, filter changes, and scroll-based lazy loading."""
+    """
+    Handle initial load, filter changes, and scroll-based lazy loading.
+
+    This is the primary callback that manages application state. It responds to:
+    - Initial page load (initial_trigger)
+    - Search query changes (search-query input)
+    - Scroll events for infinite pagination (scroll-trigger)
+
+    Args:
+        query: Current search query string from the input field.
+        scroll_counter: Counter incremented by client-side scroll detection.
+        initial_trigger: Set to 1 on initial load to trigger first data fetch.
+        state_dict: Current serialized AppState from dcc.Store.
+        ai_toggle: List containing 'enabled' if AI search is active.
+
+    Returns:
+        Serialized state dictionary for dcc.Store containing items, pagination,
+        and optional Genie table results.
+
+    Raises:
+        PreventUpdate: When callback should not update state (no trigger, etc.)
+    """
     ctx = callback_context
     if not ctx.triggered:
         raise PreventUpdate
@@ -216,7 +253,21 @@ def update_invoice_state(
 
 @app.callback(Output("results-container", "children"), Input("invoice-state", "data"))
 def render_results(state_dict: dict) -> object:
-    """Render invoice results whenever the backing store changes."""
+    """
+    Render invoice results whenever the backing store changes.
+
+    Converts the serialized state back to model objects and builds the
+    appropriate UI: invoice cards, Genie table, or empty state.
+
+    Args:
+        state_dict: Serialized AppState from dcc.Store.
+
+    Returns:
+        Dash component tree for the results container.
+
+    Raises:
+        PreventUpdate: When state is empty (initial load not complete).
+    """
     if not state_dict:
         raise PreventUpdate
     state = AppState.from_dict(state_dict)
@@ -228,7 +279,9 @@ def render_results(state_dict: dict) -> object:
     )
 
 
-# Clear results immediately when search starts (before server responds)
+# Client-side callback: Show loading spinner immediately when search starts.
+# This runs in the browser before the server callback completes, providing
+# instant visual feedback to the user.
 app.clientside_callback(
     """
     function(query, currentChildren) {
@@ -294,7 +347,19 @@ app.clientside_callback(
     prevent_initial_call=True,
 )
 def update_genie_display(msg: dict | None) -> tuple[str, str, str]:
-    """Update the status UI based on WebSocket messages."""
+    """
+    Update the Genie status UI based on WebSocket messages.
+
+    Parses incoming WebSocket messages and updates the status indicator
+    that appears below the search input during AI-powered searches.
+
+    Args:
+        msg: WebSocket message dict with 'data' key containing JSON payload.
+
+    Returns:
+        Tuple of (className, status_text, message_text) for the status UI.
+        Returns hidden state if message is invalid or inactive.
+    """
     if not msg:
         return "genie-status hidden", "", ""
 
@@ -464,7 +529,22 @@ app.clientside_callback(
     prevent_initial_call=True,
 )
 def handle_download(trigger: int | None, file_path: str | None) -> dict | None:
-    """Handle file download via dcc.Download."""
+    """
+    Handle invoice PDF file download via dcc.Download component.
+
+    Attempts to download the file using Spark first (for DBFS/Volumes access),
+    falling back to Databricks Workspace client if Spark is unavailable.
+
+    Args:
+        trigger: Timestamp indicating download was requested.
+        file_path: DBFS or Volumes path to the PDF file.
+
+    Returns:
+        Dictionary for dcc.send_bytes with file content and filename.
+
+    Raises:
+        PreventUpdate: When trigger or file_path is empty, or on download error.
+    """
     if not trigger or not file_path:
         raise PreventUpdate
 
@@ -610,7 +690,12 @@ app.clientside_callback(
 
 
 def main() -> None:
-    """Entrypoint used by uv via `uv run invoice_ui`."""
+    """
+    Application entrypoint used by uv via `uv run invoice_ui`.
+
+    Starts the Dash development server with hot reload disabled for stability.
+    Production deployments should use a WSGI server like gunicorn.
+    """
     app.run(debug=True, host="0.0.0.0", port=APP_PORT, dev_tools_hot_reload=False)
 
 
