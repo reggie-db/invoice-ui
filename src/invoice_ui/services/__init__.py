@@ -1,3 +1,17 @@
+"""
+Service factory for the Invoice Search UI.
+
+This module provides the get_invoice_service() factory function that returns
+the appropriate InvoiceService implementation based on configuration.
+
+Available Implementations:
+- demo: In-memory service with static invoice data (no Databricks required)
+- impl: Spark-backed service with Genie AI integration (requires Databricks)
+
+The service is cached at the module level, so the same instance is reused
+across all requests. Configure via INVOICE_UI_SERVICE environment variable.
+"""
+
 import os
 from functools import cache, lru_cache
 from typing import Callable, Dict
@@ -7,8 +21,6 @@ from reggie_core import logs
 from invoice_ui.services.invoice_service import InvoiceService
 from invoice_ui.services.invoice_service_demo import DemoInvoiceService
 from invoice_ui.services.invoice_service_impl import InvoiceServiceImpl
-
-"""Service factory helpers for the invoice UI."""
 
 LOG = logs.logger(__file__)
 
