@@ -15,7 +15,7 @@ required by Dash's dcc.Store component.
 from dataclasses import dataclass, field
 from typing import Any
 
-from reggie_tools import genie
+from invoice_ui.lib import genie
 
 
 @dataclass

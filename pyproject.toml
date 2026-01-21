@@ -10,9 +10,9 @@ dependencies = [
     "dash-extensions>=1.0.0",
     "dash-iconify>=0.1.2",
     "flask-sock>=0.7.0",
-    "reggie-tools @ git+https://github.com/reggie-db/reggie-bricks-py.git@main#subdirectory=reggie-tools",
-    "reggie-concurio @ git+https://github.com/reggie-db/reggie-bricks-py.git@main#subdirectory=reggie-concurio",
     "python-benedict",
+    "diskcache>=5.6.0",
+    "databricks-connect>=17.3,<18.0",
 ]
 
 [project.scripts]

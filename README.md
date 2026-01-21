@@ -112,7 +112,7 @@ invoice-ui/
 2. **URL Sync**: Query is base64-encoded to URL fragment for shareability
 3. **Callback**: Dash callback triggers `InvoiceService.list_invoices()`
 4. **AI Path** (if enabled):
-   - Query sent to Genie via `reggie_tools.genie`
+   - Query sent to Genie via local genie module (using databricks-sdk)
    - Status updates broadcast over WebSocket
    - Genie returns SQL query executed against invoice table
    - If `content_hash` found, invoices are filtered
@@ -196,8 +196,10 @@ _SERVICE_REGISTRY["my_service"] = lambda: MyInvoiceService()
 - **flask-sock**: WebSocket server for Flask
 
 ### Databricks Integration
-- **reggie-tools**: Databricks client wrappers (Spark, Workspace, Genie)
-- **reggie-concurio**: Caching utilities
+- **databricks-sdk**: Databricks SDK for Genie AI and Workspace API
+- **databricks-connect**: Spark connectivity for Databricks environments
+- **pyspark**: Apache Spark for data processing
+- **diskcache**: Disk-based caching with TTL support
 - **python-benedict**: Nested dictionary access
 
 ## License

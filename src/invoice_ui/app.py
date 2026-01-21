@@ -28,11 +28,10 @@ from pathlib import Path
 
 from dash import ALL, Dash, Input, Output, State, callback_context, dcc
 from dash.exceptions import PreventUpdate
-from reggie_core import logs
-from reggie_tools import clients, configs
 
 from invoice_ui.components.invoice_results import build_invoice_results
 from invoice_ui.layout import build_layout
+from invoice_ui.lib import clients, logs
 from invoice_ui.models.common import AppState, GenieStatusMessage
 from invoice_ui.models.invoice import (
     deserialize_page,

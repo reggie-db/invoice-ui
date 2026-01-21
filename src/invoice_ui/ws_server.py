@@ -27,7 +27,7 @@ from threading import Lock
 
 from flask import Flask
 from flask_sock import Sock
-from reggie_core import logs
+from invoice_ui.lib import logs
 from simple_websocket import Server as WebSocketServer
 
 LOG = logs.logger(__file__)

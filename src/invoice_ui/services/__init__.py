@@ -16,7 +16,7 @@ import os
 from functools import cache, lru_cache
 from typing import Callable, Dict
 
-from reggie_core import logs
+from invoice_ui.lib import logs
 
 from invoice_ui.services.invoice_service import InvoiceService
 from invoice_ui.services.invoice_service_demo import DemoInvoiceService

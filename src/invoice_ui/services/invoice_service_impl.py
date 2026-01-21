@@ -26,10 +26,8 @@ from benedict import benedict
 from pyspark.sql import Window
 from pyspark.sql import functions as F
 from pyspark.sql.dataframe import DataFrame
-from reggie_concurio import caches
-from reggie_core import logs, objects, paths
-from reggie_tools import clients, genie
 
+from invoice_ui.lib import caches, clients, genie, logs, objects, paths
 from invoice_ui.models.common import GenieStatusMessage, GenieTableResult
 from invoice_ui.models.invoice import (
     Invoice,
@@ -333,9 +331,7 @@ class InvoiceServiceImpl(InvoiceService):
                                 # No content_hash, capture as raw table data
                                 rows = df.limit(100).collect()
                                 if rows:
-                                    table_rows = [
-                                        row.asDict() for row in rows
-                                    ]
+                                    table_rows = [row.asDict() for row in rows]
                                     result["genie_table"] = {
                                         "columns": columns,
                                         "rows": table_rows,
@@ -382,14 +378,19 @@ class InvoiceServiceImpl(InvoiceService):
                 "Stored Genie result: %d rows, has_content_hash=%s, query=%s",
                 len(self._last_genie_table.rows),
                 self._last_genie_table.has_content_hash,
-                self._last_genie_table.query[:100] if self._last_genie_table.query else "",
+                self._last_genie_table.query[:100]
+                if self._last_genie_table.query
+                else "",
             )
 
         LOG.info("Content hashes: %s", content_hashes)
         return content_hashes
 
     def _genie_space_id(self) -> str | None:
-        return os.getenv("INVOICE_GENIE_SPACE_ID", None) or None
+        genie_space_id = os.getenv("INVOICE_GENIE_SPACE_ID", None) or None
+        if not genie_space_id:
+            raise ValueError("INVOICE_GENIE_SPACE_ID is not set")
+        return genie_space_id
 
     @functools.cache
     def _genie_context(self) -> tuple[genie.Service | None, str | None]:
